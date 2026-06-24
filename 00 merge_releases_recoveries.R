@@ -46,7 +46,9 @@ joined <- dplyr::select(
   release_location_state,
   release_location_rmis_region,
   release_location_rmis_basin,
-  recovery_location_code
+  recovery_location_code,
+  hatchery_location_name,
+  hatchery_location_code
 )
 
 # locations
