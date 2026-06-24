@@ -1,24 +1,24 @@
-release_location_name,run,run_code,region,ctc_indicator
-BONNEVILLE HATCHERY,fall,"3, 8",Columbia River,
-CLARKS CRK HATCHERY,fall,3,Puget Sound,
-FORKS CREEK HATCHERY,fall,3,WA coast,
-MINTER CR HATCHERY,fall,3,Puget Sound,
-NASELLE HATCHERY,fall,3,WA coast,
-QUINAULT LK HATCHERY,fall,3,WA coast,
-SAMISH HATCHERY,fall,3,Puget Sound,
-SOOS CREEK HATCHERY,fall,3,Puget Sound,
-SPRING CR NFH,fall,3,Columbia River,
-WHATCOM CR HATCHERY,fall,3,Puget Sound,
-HUPP SPRINGS REARING,spring,1,Puget Sound,
-KENDALL CR HATCHERY,spring,1,Puget Sound,
-LEWIS RIVER HATCHERY,spring,1,Columbia River,
-MARBLEMOUNT HATCHERY,spring,1,Puget Sound,
-SKOOKUM CR HATCHERY,spring,1,Puget Sound,
-WHITE RIVER HATCHERY,spring,1,Puget Sound,
-BEAR SPRINGS 1  (20),summer,2,WA coast,
-SOLDUC HATCHERY,summer,2,WA coast,
-WALLACE R HATCHERY,summer,2,Puget Sound,
-WELLS HATCHERY,summer,2,Columbia River,
+﻿release_location_name,run,region,avg_releases,relative_ranking
+MARBLEMOUNT HATCHERY,spring,Puget Sound,804426,1
+WELLS HATCHERY,summer,Columbia River,796135,2
+SPRING CR NFH,fall,Columbia River,739810,3
+SOOS CREEK HATCHERY,fall,Puget Sound,691946,4
+BONNEVILLE HATCHERY,fall,Columbia River,683698,5
+SKOOKUM CR HATCHERY,spring,Puget Sound,616475,6
+WALLACE R HATCHERY,summer,Puget Sound,610907,7
+WHITE RIVER HATCHERY,spring,Puget Sound,456377,8
+QUINAULT LK HATCHERY,fall,WA coast,422242,9
+KENDALL CR HATCHERY,spring,Puget Sound,419966,10
+SAMISH HATCHERY,fall,Puget Sound,405731,11
+HUPP SPRINGS REARING,spring,Puget Sound,351109,12
+LEWIS RIVER HATCHERY,spring,Columbia River,278384,13
+MINTER CR HATCHERY,fall,Puget Sound,273193,14
+FORKS CREEK HATCHERY,fall,WA coast,242064,15
+CLARKS CRK HATCHERY,fall,Puget Sound,194341,16
+SOLDUC HATCHERY,summer,WA coast,155030,17
+NASELLE HATCHERY,fall,WA coast,141867,18
+BEAR SPRINGS 1  (20),summer,WA coast,67629,19
+WHATCOM CR HATCHERY,fall,Puget Sound,54047,20
 ANACORTES NET PENS,,,,
 BATTLE CR HATCHERY,,,,
 BEAVER CR HATCHERY,,,,
@@ -158,4 +158,4 @@ WHITEHORSE POND,,,,
 WILLAPA ALLIANCE NP,,,,
 WILLARD NFH,,,,
 WINTHROP NFH,,,,
-ˀIMTWAHA FISH HATCHERY,,,,
+ÀÄIMTWAHA FISH HATCHERY,,,,
