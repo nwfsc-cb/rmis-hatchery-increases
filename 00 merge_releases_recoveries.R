@@ -48,7 +48,8 @@ joined <- dplyr::select(
   release_location_rmis_basin,
   recovery_location_code,
   hatchery_location_name,
-  hatchery_location_code
+  hatchery_location_code,
+  first_release_date
 )
 
 # locations
@@ -63,5 +64,6 @@ locs <- read.csv("data/rmis_locations.csv") |>
   as.data.frame()
 
 joined <- dplyr::left_join(joined, locs)
+joined$release_year <- as.numeric(as.character(substr(joined$first_release_date, 1, 4)))
 
 write.csv(joined, "data/joined_data.csv")
