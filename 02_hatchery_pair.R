@@ -1,27 +1,38 @@
-# specify the treatment hatchery
-this_hatchery <- "SOOS CREEK HATCHERY"
+joined <- read.csv("data/joined_data.csv")
 
-source("01_find_hatchery_matches.R")
-control_hatchery <- final_ranking$hatchery_location_name[1]
+data_list <- list()
 
-# now filter the recoveries to be just from these hatcheries
-# summarize by brood year and recovery region
-# though we could do this at an even coarser scale - BACI would be before / after 2021?
-recoveries <- readRDS("wa_data_after_1995.rds") |>
-  dplyr::filter(hatchery_location_name %in% c(this_hatchery, control_hatchery)) |>
-  dplyr::filter(brood_year > 2000) |>
-  dplyr::group_by(hatchery_location_name, brood_year, recovery_rmis_region) |>
-  dplyr::summarise(
-    n = n(),
-    n_est = sum(estimated_number, na.rm = TRUE),
-    .groups = "drop_last"
-  )
+# This is probably easiest to do for each treatment hatchery
 
-releases <- readRDS("all_releases_june2026.rds")
-releases$cwt_1st_mark_count[which(is.na(releases$cwt_1st_mark_count))] <- 0
-releases$cwt_2nd_mark_count[which(is.na(releases$cwt_2nd_mark_count))] <- 0
-releases$cwt <- releases$cwt_1st_mark_count + releases$cwt_2nd_mark_count
-releases <- dplyr::filter(releases, hatchery_location_name %in% c(this_hatchery, control_hatchery)) |>
-  dplyr::filter(brood_year >= min(recoveries$brood_year)) |>
-  dplyr::group_by(brood_year, hatchery_location_name) |>
-  dplyr::summarise(n_cwt_release = sum(cwt, na.rm = T), .groups = "drop_last")
+
+# These are fall
+sub <- dplyr::filter(joined, hatchery_location_name %in% c("CLARKS CRK HATCHERY", "SOOS CREEK HATCHERY", "GROVERS CR HATCHERY", "GORST CR REARING PND", "ISSAQUAH HATCHERY", "VOIGHTS CR HATCHERY"))
+sub$category <- ifelse(sub$hatchery_location_name %in% c("CLARKS CRK HATCHERY", "SOOS CREEK HATCHERY"), "treatment", "control")
+data_list[[1]] <- sub
+
+# These are fall
+sub <- dplyr::filter(joined, hatchery_location_name %in% c("QUINAULT LK HATCHERY", "SALMON R FISH CULTUR"))
+sub$category <- ifelse(sub$hatchery_location_name == "QUINAULT LK HATCHERY", "treatment", "control")
+data_list[[2]] <- sub
+
+# These are fall
+sub <- dplyr::filter(joined, hatchery_location_name %in% c("SAMISH HATCHERY", "GLENWOOD SPRINGS"), run == 1)
+sub$category <- ifelse(sub$hatchery_location_name %in% c("SAMISH HATCHERY"), "treatment", "control")
+data_list[[3]] <- sub
+
+# These are spring
+sub <- dplyr::filter(joined, run == 1, hatchery_location_name %in% c("LEWIS RIVER HATCHERY", "COWLITZ SALMON HATCHERY"))
+sub$category <- ifelse(sub$hatchery_location_name %in% c("LEWIS RIVER HATCHERY"), "treatment", "control")
+data_list[[4]] <- sub
+
+# These are fall
+sub <- dplyr::filter(joined, hatchery_location_name %in% c("FORKS CREEK HATCHERY", "NASELLE HATCHERY", "NEMAH HATCHERY"), run == 3)
+sub$category <- ifelse(sub$hatchery_location_name %in% c("FORKS CREEK HATCHERY", "NASELLE HATCHERY"), "treatment", "control")
+data_list[[5]] <- sub
+
+# These are fall
+sub <- dplyr::filter(joined, hatchery_location_name %in% c("MINTER CR HATCHERY", "CLEAR CREEK HATCHERY", "KALAMA CR HATCHERY", "TUMWATER FALLS HATCHERY"), run == 3)
+sub$category <- ifelse(sub$hatchery_location_name %in% c("MINTER CR HATCHERY"), "treatment", "control")
+data_list[[6]] <- sub
+
+saveRDS(data_list, "data/data_for_modeling.rds")
