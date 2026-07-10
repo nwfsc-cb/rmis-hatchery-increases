@@ -6,17 +6,17 @@ data_list <- list()
 
 
 # These are fall
-sub <- dplyr::filter(joined, hatchery_location_name %in% c("CLARKS CRK HATCHERY", "SOOS CREEK HATCHERY", "GROVERS CR HATCHERY", "GORST CR REARING PND", "ISSAQUAH HATCHERY", "VOIGHTS CR HATCHERY"))
+sub <- dplyr::filter(joined, run == 3, hatchery_location_name %in% c("CLARKS CRK HATCHERY", "SOOS CREEK HATCHERY", "GROVERS CR HATCHERY", "GORST CR REARING PND", "ISSAQUAH HATCHERY", "VOIGHTS CR HATCHERY"))
 sub$category <- ifelse(sub$hatchery_location_name %in% c("CLARKS CRK HATCHERY", "SOOS CREEK HATCHERY"), "treatment", "control")
 data_list[[1]] <- sub
 
 # These are fall
-sub <- dplyr::filter(joined, hatchery_location_name %in% c("QUINAULT LK HATCHERY", "SALMON R FISH CULTUR"))
+sub <- dplyr::filter(joined, run == 3, hatchery_location_name %in% c("QUINAULT LK HATCHERY", "SALMON R FISH CULTUR"))
 sub$category <- ifelse(sub$hatchery_location_name == "QUINAULT LK HATCHERY", "treatment", "control")
 data_list[[2]] <- sub
 
 # These are fall
-sub <- dplyr::filter(joined, hatchery_location_name %in% c("SAMISH HATCHERY", "GLENWOOD SPRINGS"), run == 1)
+sub <- dplyr::filter(joined, run == 3, hatchery_location_name %in% c("SAMISH HATCHERY", "GLENWOOD SPRINGS"))
 sub$category <- ifelse(sub$hatchery_location_name %in% c("SAMISH HATCHERY"), "treatment", "control")
 data_list[[3]] <- sub
 
@@ -26,12 +26,12 @@ sub$category <- ifelse(sub$hatchery_location_name %in% c("LEWIS RIVER HATCHERY")
 data_list[[4]] <- sub
 
 # These are fall
-sub <- dplyr::filter(joined, hatchery_location_name %in% c("FORKS CREEK HATCHERY", "NASELLE HATCHERY", "NEMAH HATCHERY"), run == 3)
+sub <- dplyr::filter(joined, run == 3, hatchery_location_name %in% c("FORKS CREEK HATCHERY", "NASELLE HATCHERY", "NEMAH HATCHERY"))
 sub$category <- ifelse(sub$hatchery_location_name %in% c("FORKS CREEK HATCHERY", "NASELLE HATCHERY"), "treatment", "control")
 data_list[[5]] <- sub
 
 # These are fall
-sub <- dplyr::filter(joined, hatchery_location_name %in% c("MINTER CR HATCHERY", "CLEAR CREEK HATCHERY", "KALAMA CR HATCHERY", "TUMWATER FALLS HATCHERY"), run == 3)
+sub <- dplyr::filter(joined, run == 3, hatchery_location_name %in% c("MINTER CR HATCHERY", "CLEAR CREEK HATCHERY", "KALAMA CR HATCHERY", "TUMWATER FALLS HATCHERY"))
 sub$category <- ifelse(sub$hatchery_location_name %in% c("MINTER CR HATCHERY"), "treatment", "control")
 data_list[[6]] <- sub
 
