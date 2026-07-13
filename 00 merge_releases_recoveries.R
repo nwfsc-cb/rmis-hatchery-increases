@@ -19,20 +19,25 @@ rel$cwt_1st_mark_count[which(is.na(rel$cwt_1st_mark_count))] <- 0
 rel$cwt_2nd_mark_count[which(is.na(rel$cwt_2nd_mark_count))] <- 0
 rel$cwt_total <- rel$cwt_1st_mark_count + rel$cwt_2nd_mark_count
 
-# delete releases that have comments indicating vaccination, trucking, etc
-# keeps 2948 / 3880 groups
-bad_comments <- read.csv("data/bad_comments.csv")
-rel <- dplyr::filter(rel, comments %in% bad_comments$comments == FALSE)
+rel$release_year <- as.numeric(as.character(substr(rel$first_release_date, 1, 4)))
 
-# also filter out fry / fingerling / pre-smolts rlease stages
-# rel <- dplyr::filter(rel, release_stage %in% c("S", "Y"))
+rel$period <- "Before"
+rel$period[which(rel$hatchery_location_name == "NASELLE HATCHERY" & rel$release_year >= 2020)] <- "After"
+rel$period[which(rel$hatchery_location_name == "MINTER CR HATCHERY" & rel$release_year >= 2019)] <- "After"
+rel$period[which(rel$hatchery_location_name == "SOOS CREEK HATCHERY" & rel$release_year >= 2020)] <- "After"
+rel$treatment_control <- "Control"
+rel$treatment_control[which(rel$hatchery_location_name %in% c(
+  "NASELLE HATCHERY", "MINTER CR HATCHERY",
+  "SOOS CREEK HATCHERY"
+))] <- "Treatment"
+
 
 # tags_to_keep <- which(recoveries$tag_code %in% rel$tag_code)
 # recoveries <- recoveries[tags_to_keep,]
 # filter out fish that were released outside of OR or WA -- these
 # releases are just from those states. this also includes potentially
 # hatcheries that released fish but
-joined <- dplyr::left_join(recoveries, rel, by = "tag_code") |>
+joined <- dplyr::left_join(dplyr::select(recoveries, -period), rel, by = "tag_code") |>
   dplyr::filter(
     !is.na(number_cwt_estimated),
     !is.na(cwt_total)
@@ -61,7 +66,9 @@ joined <- dplyr::select(
   release_stage,
   comments,
   avg_length,
-  avg_weight
+  avg_weight,
+  period,
+  treatment_control
 )
 
 # locations
@@ -76,7 +83,23 @@ locs <- read.csv("data/rmis_locations.csv") |>
   as.data.frame()
 
 joined <- dplyr::left_join(joined, locs)
-joined$release_year <- as.numeric(as.character(substr(joined$first_release_date, 1, 4)))
+# release year is usually brood year + 1
+# joined$release_year <- as.numeric(as.character(substr(joined$first_release_date, 1, 4)))
+
+# add fishery regions
+# joined$recovery_location_code
+joined$fishery_region <- "Other"
+joined$fishery_region[which(substr(joined$recovery_location_code, 1, 2) == "1M")] <- "Alaska"
+joined$fishery_region[which(substr(joined$recovery_location_code, 1, 2) == "2M")] <- "BC"
+joined$fishery_region[which(substr(joined$recovery_location_code, 1, 2) == "3M")] <- "Washington"
+joined$fishery_region[which(substr(joined$recovery_location_code, 1, 2) == "5M")] <- "Oregon"
+joined$fishery_region[which(substr(joined$recovery_location_code, 1, 2) == "6M")] <- "California"
+
+# rel |>
+#   dplyr::filter(hatchery_location_name == "CLARKS CRK HATCHERY") |>
+#   dplyr::group_by(brood_year) |>
+#   dplyr::summarise(n = sum(cwt_total))
+
 
 write.csv(joined, "data/joined_data.csv")
 
@@ -125,21 +148,19 @@ write.csv(treatment_hatcheries, "data/treatment_hatcheries_rmis.csv")
 
 
 ##################################################################
-#
 # Finally, we can try to assign some control hatcheries as hatcheries
 # coming from the same RMIS basin / region. There's only 20 treatment
 # hatcheries here
-#
 ##################################################################
 treatment_hatcheries <- read.csv("data/treatment_hatcheries_rmis.csv")
 
 # let's use region (coarser) instead of basin (fine scale)
-for (i in 1:nrow(treatment_hatcheries)) {
-  sub <- dplyr::filter(
-    rel,
-    release_location_rmis_region == treatment_hatcheries$release_location_rmis_region[i]
-  )
-}
+# for (i in 1:nrow(treatment_hatcheries)) {
+#   sub <- dplyr::filter(
+#     rel,
+#     release_location_rmis_region == treatment_hatcheries$release_location_rmis_region[i]
+#   )
+# }
 
 # NOTES:
 # MARBLEMOUNT has no good controls
