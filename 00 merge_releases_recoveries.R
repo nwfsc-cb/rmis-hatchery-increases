@@ -183,3 +183,5 @@ treatment_hatcheries <- read.csv("data/treatment_hatcheries_rmis.csv")
 # NASELLE HATCHERY -> lumped with Forks Creek, Nemah as control
 # BEAR SPRINGS 1  (20) -> not enough brood years
 # WHATCOM CR HATCHERY -> release stage isn't indicated, 1 release
+# BERNIE GOBIN -> these are summer run, and the major hatchery in NPS producing summer run (= Wallace) is also part of the program
+# WILLARD -> these are late fall (run = 8) and the only other CECR hatcheries producing these (Klickitat, Ltl White Salmon) are part of the program
