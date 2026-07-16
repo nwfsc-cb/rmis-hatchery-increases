@@ -8,9 +8,12 @@ rel$cwt_1st_mark_count[which(is.na(rel$cwt_1st_mark_count))] <- 0
 rel$cwt_2nd_mark_count[which(is.na(rel$cwt_2nd_mark_count))] <- 0
 rel$cwt_total <- rel$cwt_1st_mark_count + rel$cwt_2nd_mark_count
 
+rel$non_cwt_1st_mark_count[which(is.na(rel$non_cwt_1st_mark_count))] <- 0
+rel$non_cwt_2nd_mark_count[which(is.na(rel$non_cwt_2nd_mark_count))] <- 0
+rel$total_releases <- rel$cwt_total + rel$non_cwt_1st_mark_count + rel$non_cwt_2nd_mark_count
+
 rel$hatchery_location_name[which(rel$hatchery_location_name == "LUMMI HATCHERY -POND")] <- "LUMMI SEA PONDS"
 rel$hatchery_location_name[which(rel$hatchery_location_name == "KLICKITAT HATCHERY (YKFP)")] <- "KLICKITAT HATCHERY"
-
 
 hatcheries <- data.frame(hatchery_location_name = c(
   "MARBLEMOUNT HATCHERY",
@@ -96,3 +99,22 @@ dplyr::filter(subset, pretty_name != "Whatcom Creek", release_year <= 2023) |>
   ) +
   scale_color_viridis_d(option = "magma", begin = 0.2, end = 0.8)
 ggsave("figures/01_release_trends.png", width = 7, height = 6)
+
+
+dplyr::filter(subset, pretty_name != "Whatcom Creek", release_year <= 2023) |>
+  dplyr::group_by(release_year, pretty_name, run) |>
+  dplyr::summarise(n_tot = sum(total_releases)) |>
+  ggplot(aes(release_year, n_tot, color = run)) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~pretty_name, scale = "free_y", ncol = 4) +
+  theme_bw() +
+  ylab("All releases") +
+  xlab("Release year") +
+  theme(
+    # Makes the facet label background white
+    strip.background = element_rect(fill = "white"),
+    strip.text = element_text(size = 7)
+  ) +
+  scale_color_viridis_d(option = "magma", begin = 0.2, end = 0.8)
+ggsave("figures/S1_release_trends_all.png", width = 7, height = 6)
