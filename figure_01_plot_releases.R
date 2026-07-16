@@ -8,6 +8,10 @@ rel$cwt_1st_mark_count[which(is.na(rel$cwt_1st_mark_count))] <- 0
 rel$cwt_2nd_mark_count[which(is.na(rel$cwt_2nd_mark_count))] <- 0
 rel$cwt_total <- rel$cwt_1st_mark_count + rel$cwt_2nd_mark_count
 
+rel$hatchery_location_name[which(rel$hatchery_location_name == "LUMMI HATCHERY -POND")] <- "LUMMI SEA PONDS"
+rel$hatchery_location_name[which(rel$hatchery_location_name == "KLICKITAT HATCHERY (YKFP)")] <- "KLICKITAT HATCHERY"
+
+
 hatcheries <- data.frame(hatchery_location_name = c(
   "MARBLEMOUNT HATCHERY",
   "WELLS HATCHERY",
@@ -28,7 +32,12 @@ hatcheries <- data.frame(hatchery_location_name = c(
   "SOLDUC HATCHERY",
   "NASELLE HATCHERY",
   "BEAR SPRINGS 1  (20)",
-  "WHATCOM CR HATCHERY"
+  "WHATCOM CR HATCHERY",
+  "LUMMI SEA PONDS",
+  "BERNIE GOBIN HATCH",
+  "WILLARD NFH",
+  "LTL WHITE SALMON NFH",
+  "KLICKITAT HATCHERY"
 ))
 
 hatcheries$pretty_name <- c(
@@ -51,7 +60,12 @@ hatcheries$pretty_name <- c(
   "Solduc",
   "Naselle",
   "Bear Springs",
-  "Whatcom Creek"
+  "Whatcom Creek",
+  "Lummi",
+  "Bernie Gobin",
+  "Willard",
+  "Little White Salmon",
+  "Klickitat"
 )
 
 rel <- dplyr::left_join(rel, hatcheries)
@@ -61,12 +75,17 @@ subset <- dplyr::filter(rel, !is.na(pretty_name))
 
 subset$release_year <- as.numeric(substr(subset$first_release_date, 1, 4))
 
-dplyr::filter(subset, pretty_name != "Whatcom Creek", release_year <= 2025) |>
-  dplyr::group_by(release_year, pretty_name) |>
+subset$run[which(subset$run %in% c(3, 8))] <- "Fall"
+subset$run[which(subset$run %in% c(1))] <- "Spring"
+subset$run[which(subset$run %in% c(2))] <- "Summer"
+subset$run <- factor(subset$run, levels = c("Spring", "Summer", "Fall"))
+dplyr::filter(subset, pretty_name != "Whatcom Creek", release_year <= 2023) |>
+  dplyr::group_by(release_year, pretty_name, run) |>
   dplyr::summarise(n_cwt = sum(cwt_total)) |>
-  ggplot(aes(release_year, n_cwt)) +
+  ggplot(aes(release_year, n_cwt, color = run)) +
   geom_line() +
-  facet_wrap(~pretty_name, scale = "free_y") +
+  geom_point() +
+  facet_wrap(~pretty_name, scale = "free_y", ncol = 4) +
   theme_bw() +
   ylab("Coded wire tag releases") +
   xlab("Release year") +
@@ -74,5 +93,6 @@ dplyr::filter(subset, pretty_name != "Whatcom Creek", release_year <= 2025) |>
     # Makes the facet label background white
     strip.background = element_rect(fill = "white"),
     strip.text = element_text(size = 7)
-  )
+  ) +
+  scale_color_viridis_d(option = "magma", begin = 0.2, end = 0.8)
 ggsave("figures/01_release_trends.png", width = 7, height = 6)
