@@ -1,4 +1,6 @@
 library(dplyr)
+library(ggplot2)
+library(viridis)
 
 # these are all recoveries from washington state after 1995
 rel <- read.csv("data/releases_2010_2026.csv") |>
@@ -78,6 +80,13 @@ subset <- dplyr::filter(rel, !is.na(pretty_name))
 
 subset$release_year <- as.numeric(substr(subset$first_release_date, 1, 4))
 
+diffs <- subset |>
+  dplyr::group_by(release_year) |>
+  dplyr::summarise(
+    tot = sum(cwt_total),
+    logtot = log(tot)
+  )
+
 subset$run[which(subset$run %in% c(3, 8))] <- "Fall"
 subset$run[which(subset$run %in% c(1))] <- "Spring"
 subset$run[which(subset$run %in% c(2))] <- "Summer"
@@ -98,7 +107,7 @@ dplyr::filter(subset, pretty_name != "Whatcom Creek", release_year <= 2023) |>
     strip.text = element_text(size = 7)
   ) +
   scale_color_viridis_d(option = "magma", begin = 0.2, end = 0.8)
-ggsave("figures/01_release_trends.png", width = 7, height = 6)
+ggsave("figures/S1_release_trends_cwt.png", width = 7, height = 6)
 
 
 dplyr::filter(subset, pretty_name != "Whatcom Creek", release_year <= 2023) |>
@@ -117,4 +126,62 @@ dplyr::filter(subset, pretty_name != "Whatcom Creek", release_year <= 2023) |>
     strip.text = element_text(size = 7)
   ) +
   scale_color_viridis_d(option = "magma", begin = 0.2, end = 0.8)
-ggsave("figures/S1_release_trends_all.png", width = 7, height = 6)
+ggsave("figures/S2_release_trends_all.png", width = 7, height = 6)
+
+
+
+# Make figure 1, showing controls and treatments
+
+subset <- dplyr::filter(rel, hatchery_location_name %in%
+  c(
+    "NASELLE HATCHERY",
+    "SOOS CREEK HATCHERY",
+    "MINTER CR HATCHERY",
+    "GORST CR REARING PND",
+    "GROVERS CR HATCHERY",
+    "ISSAQUAH HATCHERY",
+    "VOIGHTS CR HATCHERY",
+    "NEMAH HATCHERY",
+    "CLEAR CREEK HATCHERY",
+    "KALAMA CR HATCHERY",
+    "TUMWATER FALLS HATCHERY"
+  ), run == 3)
+
+subset$release_year <- as.numeric(substr(subset$first_release_date, 1, 4))
+
+subset$group <- NA
+subset$group[which(subset$hatchery_location_name == "NASELLE HATCHERY")] <- "Naselle"
+subset$group[which(subset$hatchery_location_name == "NEMAH HATCHERY")] <- "Naselle (Control)"
+
+subset$group[which(subset$hatchery_location_name == "SOOS CREEK HATCHERY")] <- "Soos Creek"
+subset$group[which(subset$hatchery_location_name %in% c(
+  "GORST CR REARING PND",
+  "GROVERS CR HATCHERY",
+  "ISSAQUAH HATCHERY",
+  "VOIGHTS CR HATCHERY"
+))] <- "Soos Creek (Control)"
+
+subset$group[which(subset$hatchery_location_name == "MINTER CR HATCHERY")] <- "Minter Creek"
+subset$group[which(subset$hatchery_location_name %in% c(
+  "CLEAR CREEK HATCHERY",
+  "KALAMA CR HATCHERY",
+  "TUMWATER FALLS HATCHERY"
+))] <- "Minter Creek (Control)"
+
+subset |>
+  dplyr::group_by(group, release_year) |>
+  dplyr::summarise(n_tot = sum(total_releases)) |>
+  ggplot(aes(release_year, n_tot)) +
+  geom_line() +
+  geom_point(size = 2) +
+  facet_wrap(~group, scale = "free_y", ncol = 2) +
+  theme_bw() +
+  ylab("All releases") +
+  xlab("Release year") +
+  theme(
+    # Makes the facet label background white
+    strip.background = element_rect(fill = "white"),
+    strip.text = element_text(size = 7)
+  ) +
+  scale_color_viridis()
+ggsave("figures/Figure1_release_trends_control_treatment.png", width = 7, height = 6)
