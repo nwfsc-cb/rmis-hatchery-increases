@@ -1,11 +1,14 @@
-#RMIS GLMM model
+#RMIS GLMM
 #Zoe Rand
+#last updated 31 August 2026
 
 library(tidyverse)
 library(glmmTMB)
 library(DHARMa)
 library(emmeans)
 library(patchwork)
+library(broom.mixed)
+library(modelsummary) #for supplement tables
 
 
 # Data wrangling ---------------------------------------------------------
@@ -108,7 +111,9 @@ mod_dat_minter <- mod_dat_minter %>% filter(fishery_region != "Oregon")
 hatch_col <- c('#1b9e77', '#d95f02', '#7570b3', '#e7298a', '#66a61e', '#e6ab02')
 
 #plotting function
-plot_mod_dat <- function(dat, cutoff_yr) {
+plot_mod_dat <- function(dat, cutoff_yr, plot_title) {
+  max_year <- max(dat$brood_year)
+  print(max_year)
   plt2 <- ggplot(dat) +
     geom_line(aes(
       x = brood_year,
@@ -117,28 +122,59 @@ plot_mod_dat <- function(dat, cutoff_yr) {
       color = hatchery_location_name_fac
     )) +
     geom_point(
-      aes(x = brood_year, y = n_recovered, fill = log_rel_total),
-      shape = 21,
-      color = "transparent"
+      aes(x = brood_year, y = n_recovered, color = hatchery_location_name_fac)
+      #shape = 21,
+      #color = "transparent"
     ) +
     geom_vline(aes(xintercept = cutoff_yr), linetype = "dashed") +
     facet_grid(treatment_control ~ fishery_region) +
     labs(
       x = "Brood year",
-      y = "Recoveries",
-      fill = "Total releases (log)",
+      y = "CWT Recoveries",
       color = "Hatchery"
     ) +
-    scale_x_continuous(breaks = seq(2010, 2022, by = 4)) +
+    scale_x_continuous(breaks = seq(2010, max_year, by = 4)) +
     scale_color_manual(values = hatch_col) +
-    theme_bw() +
-    theme(
-      axis.text.x = element_text(angle = 90),
-      strip.background.x = element_rect(fill = "white"),
-      strip.background.y = element_blank()
-    )
-  print(plt2)
-  return(plt2)
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 90)) +
+    ggtitle(plot_title)
+
+  release_dat <- dat %>%
+    select(
+      brood_year,
+      release_total,
+      hatchery_location_name_fac,
+      treatment_control
+    ) %>%
+    distinct()
+  plt3 <- ggplot(release_dat) +
+    geom_line(aes(
+      x = brood_year,
+      y = release_total,
+      group = hatchery_location_name_fac,
+      color = hatchery_location_name_fac
+    )) +
+    geom_point(
+      aes(x = brood_year, y = release_total, color = hatchery_location_name_fac)
+    ) +
+    geom_vline(aes(xintercept = cutoff_yr), linetype = "dashed") +
+    facet_wrap(~treatment_control) +
+    labs(
+      x = "Brood year",
+      y = "CWT Releases",
+      color = "Hatchery"
+    ) +
+    scale_x_continuous(breaks = seq(2010, max_year, by = 4)) +
+    scale_color_manual(values = hatch_col) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 90))
+
+  plt_tog <- plt2 +
+    plt3 +
+    plot_layout(guides = "collect", axes = "collect") &
+    theme(legend.position = "bottom")
+  print(plt_tog)
+  return(plt_tog)
 }
 
 #plots
@@ -180,13 +216,34 @@ mod_dat_minter$hatchery_location_name_fac <- factor(
   labels = c("Minter Creek", "Clear Creek", "Kalama Creek", "Tumwater Falls")
 )
 
-soos_recs <- plot_mod_dat(mod_dat_soos, 2020) + ggtitle("Soos creek")
-naselle_recs <- plot_mod_dat(mod_dat_naselle, 2020) + ggtitle("Naselle")
-minter_recs <- plot_mod_dat(mod_dat_minter, 2019) + ggtitle("Minter creek")
+soos_recs <- plot_mod_dat(mod_dat_soos, 2020, "Soos creek")
+naselle_recs <- plot_mod_dat(mod_dat_naselle, 2020, "Naselle")
+minter_recs <- plot_mod_dat(mod_dat_minter, 2019, "Minter creek")
 
-#ggsave("figures/soos_recs.png", soos_recs, dpi = 600)
-#ggsave("figures/naselle_recs.png", naselle_recs, dpi = 600)
-#ggsave("figures/minter_recs.png", minter_recs, dpi = 600)
+# ggsave(
+#   "figures/soos_recs.png",
+#   soos_recs,
+#   dpi = 600,
+#   width = 8,
+#   height = 4,
+#   units = "in"
+# )
+# ggsave(
+#   "figures/naselle_recs.png",
+#   naselle_recs,
+#   dpi = 600,
+#   width = 8,
+#   height = 4,
+#   units = "in"
+# )
+# ggsave(
+#   "figures/minter_recs.png",
+#   minter_recs,
+#   dpi = 600,
+#   width = 8,
+#   height = 4,
+#   units = "in"
+# )
 
 # Model ------------------------------------------------------------------
 
@@ -201,18 +258,7 @@ mod_dat_soos$fishery_region_f <- relevel(
   ref = "Washington"
 )
 
-fit1 <- glmmTMB(
-  n_recovered ~ treatment_control *
-    period_f +
-    fishery_region_f +
-    (1 | brood_year) +
-    offset(log_rel_total),
-  family = nbinom2,
-  data = mod_dat_soos
-)
-summary(fit1)
-
-#trying with spatial effect
+#model fit
 fit2 <- glmmTMB(
   n_recovered ~ treatment_control *
     period_f *
@@ -223,22 +269,23 @@ fit2 <- glmmTMB(
   data = mod_dat_soos
 )
 summary(fit2)
-#fit 1 (without regional interaction) has a lower AIC--within 2 but without interaction is a simpler model
+
 
 #diagnostics
-fit1_simres <- simulateResiduals(fit1)
+
 fit2_simres <- simulateResiduals(fit2)
 
-plot(fit1_simres)
+
 plot(fit2_simres)
 
-plotResiduals(fit1_simres, form = model.frame(fit1)$treatment_control)
-plotResiduals(fit1_simres, form = model.frame(fit1)$fishery_region_f)
-plotResiduals(fit1_simres, form = model.frame(fit1)$period_f)
-#plotResiduals(fit2_simres, form = model.frame(fit1)$brood_year)
+plotResiduals(fit2_simres, form = model.frame(fit2)$treatment_control)
+plotResiduals(fit2_simres, form = model.frame(fit2)$fishery_region_f)
+plotResiduals(fit2_simres, form = model.frame(fit2)$period_f)
+testDispersion(fit2_simres)
+
 
 #plotting results
-plot_mod_results <- function(fit) {
+plot_mod_results <- function(fit, dat) {
   EMM_2 <- emmeans(
     fit,
     ~ treatment_control * period_f * fishery_region_f,
@@ -247,9 +294,38 @@ plot_mod_results <- function(fit) {
   )
   print(plot(EMM_2))
 
+  #getting average offset for each group
+  release_dat <- dat %>%
+    select(
+      brood_year,
+      release_total,
+      hatchery_location_name_fac,
+      treatment_control,
+      period
+    ) %>%
+    distinct()
+
+  release_avg <- release_dat %>%
+    group_by(treatment_control, period) %>%
+    summarise(mean_rel = mean(release_total))
+
+  avg_offset_rel <- dat %>%
+    group_by(treatment_control, period_f, fishery_region_f) %>%
+    summarise(n = n()) %>%
+    left_join(release_avg, by = c("treatment_control", "period_f" = "period"))
+
+  avg_offset_rel$period_f <- relevel(
+    factor(avg_offset_rel$period_f),
+    ref = "Before"
+  )
+
+  avg_offset_rel <- avg_offset_rel %>% arrange(fishery_region_f, period_f)
+  print(avg_offset_rel)
+
   EMM_ip_2 <- emmip(
     fit,
     treatment_control ~ period_f | fishery_region_f,
+    offset = log(avg_offset_rel$mean_rel),
     CIs = TRUE,
     plotit = FALSE
   )
@@ -273,8 +349,8 @@ plot_mod_results <- function(fit) {
   return(print(comparison_plot))
 }
 
-soos_plot <- plot_mod_results(fit1) + ggtitle("a) Soos creek")
-
+soos_plot <- plot_mod_results(fit2, mod_dat_soos) + ggtitle("a) Soos creek")
+soos_plot
 ## Naselle  ------------------------------------------------------------------
 
 #making "before" the reference category for period
@@ -290,18 +366,6 @@ mod_dat_naselle$fishery_region_f <- relevel(
 )
 
 
-fit3 <- glmmTMB(
-  n_recovered ~ treatment_control *
-    period_f +
-    fishery_region_f +
-    (1 | brood_year) +
-    offset(log_rel_total),
-  family = nbinom2,
-  data = mod_dat_naselle
-)
-
-summary(fit3)
-
 fit4 <- glmmTMB(
   n_recovered ~ treatment_control *
     period_f *
@@ -312,29 +376,26 @@ fit4 <- glmmTMB(
   data = mod_dat_naselle
 )
 summary(fit4)
-#model with interaction has lower AIC (fit 4)
+
 
 #diagnostics
-fit3_simres <- simulateResiduals(fit3)
 fit4_simres <- simulateResiduals(fit4)
 
 
-plot(fit3_simres)
 plot(fit4_simres)
 
-testQuantiles(fit3_simres)
+
 testQuantiles(fit4_simres)
 
 plotResiduals(fit4_simres, form = model.frame(fit4)$treatment_control)
 plotResiduals(fit4_simres, form = model.frame(fit4)$fishery_region_f)
 plotResiduals(fit4_simres, form = model.frame(fit4)$period_f)
-#plotResiduals(fit4_simres, form = model.frame(fit4)$brood_year)
-
-#some issues with the residuals currently
+testDispersion(fit4_simres) #evidence of overdispersion here
+#some (potentially minor) issues with the residuals currently
 
 #plotting results
 #prints two different ways of looking at the plots
-naselle_plot <- plot_mod_results(fit4) + ggtitle("b) Naselle")
+naselle_plot <- plot_mod_results(fit4, mod_dat_naselle) + ggtitle("b) Naselle")
 
 ## Minter  ------------------------------------------------------------------
 #making "before" the reference category for period
@@ -350,19 +411,6 @@ mod_dat_minter$fishery_region_f <- relevel(
 )
 
 
-fit5 <- glmmTMB(
-  n_recovered ~ treatment_control *
-    period_f +
-    fishery_region_f +
-    (1 | brood_year) +
-    offset(log_rel_total),
-  family = nbinom2,
-  data = mod_dat_minter
-)
-
-summary(fit5)
-
-
 fit6 <- glmmTMB(
   n_recovered ~ treatment_control *
     period_f *
@@ -374,27 +422,27 @@ fit6 <- glmmTMB(
 )
 
 summary(fit6)
-#model without interaction has lower AIC
+
 
 #diagnostics
-fit5_simres <- simulateResiduals(fit5)
 fit6_simres <- simulateResiduals(fit6)
 
 
-plot(fit5_simres)
 plot(fit6_simres)
 
-testQuantiles(fit5_simres)
+testQuantiles(fit6_simres)
 
-plotResiduals(fit5_simres, form = model.frame(fit5)$treatment_control)
-plotResiduals(fit5_simres, form = model.frame(fit5)$fishery_region_f)
-plotResiduals(fit5_simres, form = model.frame(fit5)$period_f)
+plotResiduals(fit6_simres, form = model.frame(fit6)$treatment_control)
+plotResiduals(fit6_simres, form = model.frame(fit6)$fishery_region_f)
+
+plotResiduals(fit6_simres, form = model.frame(fit6)$period_f)
 
 
-#some issues with the residuals currently
+#some (potentially minor) issues with the residuals currently, but don't seem like a big deal
 
 #plotting results
-minter_plot <- plot_mod_results(fit5) + ggtitle("c) Minter creek")
+minter_plot <- plot_mod_results(fit6, mod_dat_minter) +
+  ggtitle("c) Minter creek")
 
 
 #plotting all three together
@@ -406,11 +454,213 @@ plot_tog <- soos_plot /
 
 plot_tog
 
-ggsave(
-  "figures/initial_mod_results.png",
-  plot_tog,
-  dpi = 300,
-  width = 6,
-  height = 10,
-  units = "in"
+# ggsave(
+#   "figures/initial_mod_results.png",
+#   plot_tog,
+#   dpi = 300,
+#   width = 6,
+#   height = 10,
+#   units = "in"
+# )
+
+# Table for supplement ---------------------------------------------------
+options(modelsummary_get = "broom")
+mods <- list("Soos creek" = fit2, "Naselle" = fit4, "Minter creek" = fit6)
+modelsummary(
+  mods,
+  shape = term ~ model + statistic,
+  statistic = "conf.int",
+  coef_rename = c(
+    "(Intercept)" = "Intercept",
+    "treatment_controlTreatment" = "Treatment",
+    "period_fAfter" = "After",
+    "fishery_region_fOregon" = "Oregon",
+    "fishery_region_fBC" = "British Columbia",
+    "fishery_region_fAlaska" = "Alaska",
+    "fishery_region_fWashington" = "Washington"
+  ),
+  stars = TRUE,
+  output = "modelsummary.docx"
 )
+
+
+# Random effects plot ----------------------------------------------------
+
+re_Soos <- ranef(fit2, condVar = TRUE)
+re_Soos_df <- as.data.frame(re_Soos) %>%
+  add_column(trmt = "Soos creek") %>%
+  mutate(brood_year = as.numeric(as.character(grp)))
+
+re_Naselle <- ranef(fit4, condVar = TRUE)
+re_Naselle_df <- as.data.frame(re_Naselle) %>%
+  add_column(trmt = "Naselle") %>%
+  mutate(brood_year = as.numeric(as.character(grp)))
+re_Minter <- ranef(fit6, condVar = TRUE)
+re_Minter_df <- as.data.frame(re_Minter) %>%
+  add_column(trmt = "Minter creek") %>%
+  mutate(brood_year = as.numeric(as.character(grp)))
+
+#combine data frames for plotting
+re_all <- bind_rows(re_Soos_df, re_Naselle_df, re_Minter_df)
+
+#plots conditional mode and 2*conditional standard deviation
+plt_all_re <- re_all %>%
+  ggplot(aes(y = condval, x = brood_year)) +
+  geom_point(aes(y = condval), size = 2) +
+  geom_linerange(aes(
+    ymin = condval - 2 * condsd,
+    ymax = condval + 2 * condsd
+  )) +
+  facet_wrap(~trmt, nrow = 3) +
+  xlab("Brood year \n") +
+  ylab("\nConditional Mode") +
+  scale_x_continuous(breaks = seq(2010, 2022, by = 2)) +
+  theme_bw() +
+  theme(
+    legend.position = "none",
+    legend.title = element_blank(),
+    strip.background = element_rect(fill = "white")
+  )
+
+plt_all_re
+
+# ggsave(
+#   "figures/random_effects.png",
+#   plt_all_re,
+#   width = 6,
+#   height = 6,
+#   units = "in"
+# )
+
+# Data summary for paper -------------------------------------------------
+mod_dat_soos %>%
+  group_by(treatment_control, period) %>%
+  summarise(
+    n_rec_tot = sum(n_recovered),
+    avg_rec = mean(n_recovered),
+    tot_rel = sum(release_total),
+    avg_rel = mean(release_total)
+  )
+mod_dat_naselle %>%
+  group_by(treatment_control, period) %>%
+  summarise(
+    n_rec_tot = sum(n_recovered),
+    avg_rec = mean(n_recovered),
+    tot_rel = sum(release_total),
+    avg_rel = mean(release_total)
+  )
+mod_dat_minter %>%
+  group_by(treatment_control, period) %>%
+  summarise(
+    n_rec_tot = sum(n_recovered),
+    avg_rec = mean(n_recovered),
+    tot_rel = sum(release_total),
+    avg_rel = mean(release_total)
+  )
+
+mod_dat_soos %>%
+  group_by(hatchery_location_name_fac) %>%
+  summarise(
+    max = max(n_recovered),
+    by = brood_year[which(n_recovered == max(n_recovered))]
+  )
+mod_dat_naselle %>%
+  group_by(hatchery_location_name_fac) %>%
+  summarise(
+    max = max(n_recovered),
+    by = brood_year[which(n_recovered == max(n_recovered))]
+  )
+mod_dat_minter %>%
+  group_by(hatchery_location_name_fac) %>%
+  summarise(
+    max = max(n_recovered),
+    by = brood_year[which(n_recovered == max(n_recovered))]
+  )
+
+
+# Recovery rates for paper supplement-----------------------------------------------
+
+new_dat_soos <- expand_grid(
+  treatment_control = c("Control", "Treatment"),
+  period = c("Before", "After"),
+  fishery_region = c("BC", "Oregon", "Washington"),
+  brood_year = NA,
+  log_rel_total = 0
+) %>%
+  mutate(
+    period_f = relevel(
+      factor(period),
+      ref = "Before"
+    ),
+    fishery_region_f = relevel(
+      factor(fishery_region),
+      ref = "Washington"
+    )
+  )
+
+#get predictions
+pred_soos <- predict(fit2, newdata = new_dat_soos, type = "response")
+# add it to data frame
+soos_tab <- new_dat_soos %>% add_column(predicted_rate = pred_soos)
+
+
+new_dat_naselle <- expand_grid(
+  treatment_control = c("Control", "Treatment"),
+  period = c("Before", "After"),
+  fishery_region = c("BC", "Alaska", "Washington"),
+  brood_year = NA,
+  log_rel_total = 0
+) %>%
+  mutate(
+    period_f = relevel(
+      factor(period),
+      ref = "Before"
+    ),
+    fishery_region_f = relevel(
+      factor(fishery_region),
+      ref = "BC"
+    )
+  )
+
+#get predictions
+pred_naselle <- predict(fit4, newdata = new_dat_naselle, type = "response")
+# add it to data frame
+naselle_tab <- new_dat_naselle %>% add_column(predicted_rate = pred_naselle)
+
+new_dat_minter <- expand_grid(
+  treatment_control = c("Control", "Treatment"),
+  period = c("Before", "After"),
+  fishery_region = c("BC", "Alaska", "Washington"),
+  brood_year = NA,
+  log_rel_total = 0
+) %>%
+  mutate(
+    period_f = relevel(
+      factor(period),
+      ref = "Before"
+    ),
+    fishery_region_f = relevel(
+      factor(fishery_region),
+      ref = "Washington"
+    )
+  )
+
+#get predictions
+pred_minter <- predict(fit6, newdata = new_dat_minter, type = "response")
+# add it to data frame
+minter_tab <- new_dat_minter %>% add_column(predicted_rate = pred_minter)
+
+soos_tab <- soos_tab %>% add_column("Model" = "Soos creek")
+naselle_tab <- naselle_tab %>% add_column("Model" = "Naselle")
+minter_tab <- minter_tab %>% add_column("Model" = "Minter creek")
+
+tabs <- bind_rows(soos_tab, naselle_tab, minter_tab) %>%
+  select(-c(log_rel_total, period_f, fishery_region_f, brood_year)) %>%
+  pivot_wider(
+    id_cols = c(treatment_control, period, fishery_region),
+    names_from = Model,
+    values_from = predicted_rate
+  )
+
+tabs
+#write_csv(tabs, "model_predicted_rate.csv")
