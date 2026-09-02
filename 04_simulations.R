@@ -1,6 +1,6 @@
 #Simulation code
 #Zoe Rand and Eric Ward
-#Last updated: 31 August 2026
+#Last updated: 2 September 2026
 library(tidyverse)
 library(glmmTMB)
 library(emmeans)
@@ -12,7 +12,7 @@ simulate_data <- function(
   n_releases_after_treat = 1000000,
   n_releases_before_control = 300000,
   n_releases_after_control = 300000,
-  baseline_recovery_rate = exp(-8.5), # survival x sampling rate for naselle
+  baseline_recovery_rate = exp(-8.87), # survival x sampling rate for soos creek in Washington
   B_treatment_control = exp(0), # effect of treatment
   exp_B_after = exp(0), # how much does baseline rate change before:after for all
   phi = 4,
@@ -71,7 +71,7 @@ fit_sim_dat <- function(
   n_releases_after_treat = 1000000,
   n_releases_before_control = 300000,
   n_releases_after_control = 300000,
-  baseline_recovery_rate = exp(-8.5),
+  baseline_recovery_rate = exp(-8.87),
   B_treatment_control = exp(0),
   exp_B_after = exp(0),
   phi = 4,
@@ -157,7 +157,7 @@ for (s in 1:length(seeds)) {
 
 sim_signif_cumulative <- rowSums(sim_signif) / nsims
 
-p1 <- plot_sim_results(sim_signif_cumulative, "baseline rate = 0.0002")
+p1 <- plot_sim_results(sim_signif_cumulative, "Baseline")
 
 
 #2) there is a decline of exp(-1) in the recovery rate in the after period
@@ -183,7 +183,7 @@ sim_signif_cumulative2 <- rowSums(sim_signif2) / nsims
 
 p2 <- plot_sim_results(
   sim_signif_cumulative2,
-  "baseline rate = 0.0002, \n after rate = 0.00007 "
+  "Small decrease in recovery \n rate in the after period "
 )
 
 
@@ -210,11 +210,12 @@ sim_signif_cumulative3 <- rowSums(sim_signif3) / nsims
 
 p3 <- plot_sim_results(
   sim_signif_cumulative3,
-  "baseline rate = 0.0002, \n after rate = 0.00005"
+  "Large decrease in recovery \n rate in the after period"
 )
 
 
 #4) increase in data overdispersion
+#mid-level overdispersion (phi = 7)
 list_of_fits4 <- list()
 sim_fits4 <- list()
 sim_signif4 <- matrix(NA, nrow = length(release_options), ncol = length(seeds))
@@ -225,7 +226,7 @@ for (s in 1:length(seeds)) {
       n_releases_after_treat = release_options[i] * 300000,
       exp_B_after = exp(0),
       seed = seeds[s],
-      phi = 4
+      phi = 7
     )
     sim_fits4[[i]] <- sim_fit4$fit
     sim_signif4[i, s] <- sim_fit4$sig
@@ -237,12 +238,10 @@ sim_signif_cumulative4 <- rowSums(sim_signif4) / nsims
 
 p4 <- plot_sim_results(
   sim_signif_cumulative4,
-  "baseline rate = 0.0002, \n phi = 4"
+  "Middle overdispersion"
 )
 
-
-#5) change in monitoring time in the after period
-#5 years (the ones above are 10 years)
+#higher overdispersion (phi = 3)
 list_of_fits5 <- list()
 sim_fits5 <- list()
 sim_signif5 <- matrix(NA, nrow = length(release_options), ncol = length(seeds))
@@ -253,7 +252,7 @@ for (s in 1:length(seeds)) {
       n_releases_after_treat = release_options[i] * 300000,
       exp_B_after = exp(0),
       seed = seeds[s],
-      phi = 15
+      phi = 3
     )
     sim_fits5[[i]] <- sim_fit5$fit
     sim_signif5[i, s] <- sim_fit5$sig
@@ -265,11 +264,12 @@ sim_signif_cumulative5 <- rowSums(sim_signif5) / nsims
 
 p5 <- plot_sim_results(
   sim_signif_cumulative5,
-  "baseline rate = 0.0002, \n 5 years in after"
+  "High overdispersion"
 )
 
 
-#2 years (the ones above are 10 years)
+#5) change in monitoring time in the after period
+#5 years (the ones above are 10 years)
 list_of_fits6 <- list()
 sim_fits6 <- list()
 sim_signif6 <- matrix(NA, nrow = length(release_options), ncol = length(seeds))
@@ -280,7 +280,8 @@ for (s in 1:length(seeds)) {
       n_releases_after_treat = release_options[i] * 300000,
       exp_B_after = exp(0),
       seed = seeds[s],
-      phi = 15
+      phi = 15,
+      n_years_after = 5
     )
     sim_fits6[[i]] <- sim_fit6$fit
     sim_signif6[i, s] <- sim_fit6$sig
@@ -292,9 +293,109 @@ sim_signif_cumulative6 <- rowSums(sim_signif6) / nsims
 
 p6 <- plot_sim_results(
   sim_signif_cumulative6,
-  "baseline rate = 0.0002, \n 2 years in after"
+  "5 years in the \nafter period"
 )
 
 
+#2 years (the ones above are 10 years)
+list_of_fits7 <- list()
+sim_fits7 <- list()
+sim_signif7 <- matrix(NA, nrow = length(release_options), ncol = length(seeds))
+
+for (s in 1:length(seeds)) {
+  for (i in 1:length(release_options)) {
+    sim_fit7 <- fit_sim_dat(
+      n_releases_after_treat = release_options[i] * 300000,
+      exp_B_after = exp(0),
+      seed = seeds[s],
+      phi = 15,
+      n_years_after = 2
+    )
+    sim_fits7[[i]] <- sim_fit7$fit
+    sim_signif7[i, s] <- sim_fit7$sig
+  }
+  list_of_fits7[[s]] <- sim_fits7
+}
+
+sim_signif_cumulative7 <- rowSums(sim_signif7) / nsims
+
+p7 <- plot_sim_results(
+  sim_signif_cumulative7,
+  "2 years in the \nafter period"
+)
+
+
+#6) Recovery rate is the same in before and after but lower than baseline
+#small decrease
+list_of_fits8 <- list()
+sim_fits8 <- list()
+sim_signif8 <- matrix(NA, nrow = length(release_options), ncol = length(seeds))
+
+for (s in 1:length(seeds)) {
+  for (i in 1:length(release_options)) {
+    sim_fit8 <- fit_sim_dat(
+      baseline_recovery_rate = exp(-9.3),
+      n_releases_after_treat = release_options[i] * 300000,
+      seed = seeds[s],
+      phi = 15
+    )
+    sim_fits8[[i]] <- sim_fit8$fit
+    sim_signif8[i, s] <- sim_fit8$sig
+  }
+  list_of_fits8[[s]] <- sim_fits8
+}
+
+sim_signif_cumulative8 <- rowSums(sim_signif8) / nsims
+
+p8 <- plot_sim_results(sim_signif_cumulative, "Small decrease in recovery rate")
+
+#large decrease
+list_of_fits9 <- list()
+sim_fits9 <- list()
+sim_signif9 <- matrix(NA, nrow = length(release_options), ncol = length(seeds))
+
+for (s in 1:length(seeds)) {
+  for (i in 1:length(release_options)) {
+    sim_fit9 <- fit_sim_dat(
+      baseline_recovery_rate = exp(-9.6),
+      n_releases_after_treat = release_options[i] * 300000,
+      seed = seeds[s],
+      phi = 15
+    )
+    sim_fits9[[i]] <- sim_fit9$fit
+    sim_signif9[i, s] <- sim_fit9$sig
+  }
+  list_of_fits9[[s]] <- sim_fits9
+}
+
+sim_signif_cumulative9 <- rowSums(sim_signif9) / nsims
+
+p9 <- plot_sim_results(sim_signif_cumulative, "Large decrease in recovery rate")
+
+
 #plot simulations together
-(p1 + p2 + p3) / (p4 + p5 + p6)
+des <- "
+AA##
+BBCC
+DDEE
+FFGG
+HHII"
+pall <- p1 +
+  p8 +
+  p9 +
+  p2 +
+  p3 +
+  p4 +
+  p5 +
+  p6 +
+  p7 +
+  plot_layout(design = des, axes = "collect")
+
+ggsave(
+  "figures/simualtion_results.png",
+  pall,
+  width = 6,
+  height = 8,
+  units = "in",
+  dpi = 600
+)

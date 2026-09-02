@@ -1,6 +1,6 @@
 #RMIS GLMM
 #Zoe Rand
-#last updated 31 August 2026
+#last updated 2 September 2026
 
 library(tidyverse)
 library(glmmTMB)
@@ -21,6 +21,12 @@ rel$cwt_1st_mark_count[which(is.na(rel$cwt_1st_mark_count))] <- 0
 rel$cwt_2nd_mark_count[which(is.na(rel$cwt_2nd_mark_count))] <- 0
 rel$cwt_total <- rel$cwt_1st_mark_count + rel$cwt_2nd_mark_count
 
+rel$non_cwt_1st_mark_count[which(is.na(rel$non_cwt_1st_mark_count))] <- 0
+rel$non_cwt_2nd_mark_count[which(is.na(rel$non_cwt_2nd_mark_count))] <- 0
+rel$total_releases <- rel$cwt_total +
+  rel$non_cwt_1st_mark_count +
+  rel$non_cwt_2nd_mark_count
+
 #read in total recoveries
 rec <- read_csv("data/joined_data.csv")
 
@@ -37,6 +43,17 @@ head(dat$Soos)
 
 #note only focusing on Soos, Naselle, and Minter for now
 #adding "after" designations to control hatcheries
+dat$Soos$release_year <- as.numeric(substr(dat$Soos$first_release_date, 1, 4))
+dat$Naselle$release_year <- as.numeric(substr(
+  dat$Naselle$first_release_date,
+  1,
+  4
+))
+dat$Minter$release_year <- as.numeric(substr(
+  dat$Minter$first_release_date,
+  1,
+  4
+))
 dat$Soos$period[dat$Soos$release_year >= 2020] <- "After"
 dat$Naselle$period[dat$Naselle$release_year >= 2020] <- "After"
 dat$Minter$period[dat$Minter$release_year >= 2019] <- "After"
@@ -79,7 +96,7 @@ mod_dat_minter <- dat$Minter %>%
 #using release data to get total releases
 rel_by_hatch <- rel %>%
   group_by(brood_year, hatchery_location_name) %>%
-  summarise(release_total = sum(cwt_total)) %>%
+  summarise(release_total = sum(total_releases)) %>%
   mutate(log_rel_total = log(release_total))
 
 mod_dat_soos <- mod_dat_soos %>%
@@ -91,6 +108,11 @@ mod_dat_naselle <- mod_dat_naselle %>%
 mod_dat_minter <- mod_dat_minter %>%
   left_join(rel_by_hatch, by = c("brood_year", "hatchery_location_name"))
 
+#removing hatcheries that aren't treatments or controls
+mod_dat_soos <- mod_dat_soos %>%
+  filter(hatchery_location_name != "CLARKS CRK HATCHERY")
+mod_dat_naselle <- mod_dat_naselle %>%
+  filter(hatchery_location_name != "FORKS CREEK HATCHERY")
 
 #removing regions that don't have enough data
 #Soos removing Alaska because only one control recovery in the after
@@ -277,6 +299,7 @@ fit2_simres <- simulateResiduals(fit2)
 
 
 plot(fit2_simres)
+#some (potentially minor) issues with the residuals currently
 
 plotResiduals(fit2_simres, form = model.frame(fit2)$treatment_control)
 plotResiduals(fit2_simres, form = model.frame(fit2)$fishery_region_f)
@@ -329,6 +352,7 @@ plot_mod_results <- function(fit, dat) {
     CIs = TRUE,
     plotit = FALSE
   )
+  print(EMM_ip_2)
   comparison_plot <- ggplot(EMM_ip_2) +
     geom_linerange(
       aes(x = xvar, ymin = LCL, ymax = UCL, color = tvar),
@@ -390,8 +414,8 @@ testQuantiles(fit4_simres)
 plotResiduals(fit4_simres, form = model.frame(fit4)$treatment_control)
 plotResiduals(fit4_simres, form = model.frame(fit4)$fishery_region_f)
 plotResiduals(fit4_simres, form = model.frame(fit4)$period_f)
-testDispersion(fit4_simres) #evidence of overdispersion here
-#some (potentially minor) issues with the residuals currently
+testDispersion(fit4_simres)
+
 
 #plotting results
 #prints two different ways of looking at the plots
@@ -429,6 +453,7 @@ fit6_simres <- simulateResiduals(fit6)
 
 
 plot(fit6_simres)
+#some (potentially minor) issues with the residuals currently
 
 testQuantiles(fit6_simres)
 
@@ -437,8 +462,6 @@ plotResiduals(fit6_simres, form = model.frame(fit6)$fishery_region_f)
 
 plotResiduals(fit6_simres, form = model.frame(fit6)$period_f)
 
-
-#some (potentially minor) issues with the residuals currently, but don't seem like a big deal
 
 #plotting results
 minter_plot <- plot_mod_results(fit6, mod_dat_minter) +
@@ -455,7 +478,7 @@ plot_tog <- soos_plot /
 plot_tog
 
 # ggsave(
-#   "figures/initial_mod_results.png",
+#   "figures/mod_results.png",
 #   plot_tog,
 #   dpi = 300,
 #   width = 6,
