@@ -75,17 +75,20 @@ hatcheries$pretty_name <- c(
 
 rel <- dplyr::left_join(rel, hatcheries)
 
-# filter out only hatcheries in the program
-subset <- dplyr::filter(rel, !is.na(pretty_name))
+rel$release_year <- as.numeric(substr(rel$first_release_date, 1, 4))
+rel$is_treatment <- ifelse(!is.na(rel$pretty_name), 1, 0)
 
-subset$release_year <- as.numeric(substr(subset$first_release_date, 1, 4))
-
-diffs <- subset |>
+rel_summary <- rel |>
   dplyr::group_by(release_year) |>
   dplyr::summarise(
-    tot = sum(cwt_total),
-    logtot = log(tot)
+    n_trt = sum(cwt_total[which(is_treatment == 1)]),
+    n_tot = sum(cwt_total),
+    n_ctrl = n_tot - n_trt,
+    p_trt = n_trt / n_tot
   )
+
+# filter out only hatcheries in the program
+subset <- dplyr::filter(rel, !is.na(pretty_name))
 
 subset$run[which(subset$run %in% c(3, 8))] <- "Fall"
 subset$run[which(subset$run %in% c(1))] <- "Spring"
@@ -128,7 +131,27 @@ dplyr::filter(subset, pretty_name != "Whatcom Creek", release_year <= 2023) |>
   scale_color_viridis_d(option = "magma", begin = 0.2, end = 0.8)
 ggsave("figures/S2_release_trends_all.png", width = 7, height = 6)
 
-
+dplyr::filter(subset, pretty_name != "Whatcom Creek", release_year <= 2023) |>
+  dplyr::group_by(release_year, pretty_name, run) |>
+  dplyr::summarise(
+    n_cwt = sum(cwt_total),
+    n_tot = sum(total_releases),
+    p_cwt = n_cwt / n_tot
+  ) |>
+  ggplot(aes(release_year, p_cwt, color = run)) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~pretty_name, scale = "free_y", ncol = 4) +
+  theme_bw() +
+  ylab("Percent of relases that are CWT") +
+  xlab("Release year") +
+  theme(
+    # Makes the facet label background white
+    strip.background = element_rect(fill = "white"),
+    strip.text = element_text(size = 7)
+  ) +
+  scale_color_viridis_d(option = "magma", begin = 0.2, end = 0.8)
+ggsave("figures/S3_release_trends_all.png", width = 7, height = 6)
 
 # Make figure 1, showing controls and treatments
 
