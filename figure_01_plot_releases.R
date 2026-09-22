@@ -3,8 +3,9 @@ library(ggplot2)
 library(viridis)
 
 # these are all recoveries from washington state after 1995
-rel <- read.csv("data/releases_2010_2026.csv") |>
+rel <- read.csv("data/CSV12935.TXT") |>
   dplyr::select(-record_code) |>
+  dplyr::filter(brood_year >= 2010, brood_year <= 2022) |>
   dplyr::rename(tag_code = tag_code_or_release_id)
 rel$cwt_1st_mark_count[which(is.na(rel$cwt_1st_mark_count))] <- 0
 rel$cwt_2nd_mark_count[which(is.na(rel$cwt_2nd_mark_count))] <- 0
@@ -90,20 +91,27 @@ rel_summary <- rel |>
 # filter out only hatcheries in the program
 subset <- dplyr::filter(rel, !is.na(pretty_name))
 
+# subset <- dplyr::filter(subset, hatchery_location_name == "SOOS CREEK HATCHERY", run==3)
+# dplyr::group_by(subset, brood_year) |>
+#   dplyr::summarise(annual_total = sum(total_releases)) |>
+#   as.data.frame()
+
 subset$run[which(subset$run %in% c(3, 8))] <- "Fall"
 subset$run[which(subset$run %in% c(1))] <- "Spring"
 subset$run[which(subset$run %in% c(2))] <- "Summer"
 subset$run <- factor(subset$run, levels = c("Spring", "Summer", "Fall"))
-dplyr::filter(subset, pretty_name != "Whatcom Creek", release_year <= 2023) |>
-  dplyr::group_by(release_year, pretty_name, run) |>
+dplyr::filter(subset, pretty_name != "Whatcom Creek") |>
+  dplyr::group_by(brood_year, pretty_name, run) |>
   dplyr::summarise(n_cwt = sum(cwt_total)) |>
-  ggplot(aes(release_year, n_cwt, color = run)) +
+  ggplot(aes(brood_year, n_cwt, color = run)) +
   geom_line() +
   geom_point() +
   facet_wrap(~pretty_name, scale = "free_y", ncol = 4) +
   theme_bw() +
-  ylab("Coded wire tag releases") +
-  xlab("Release year") +
+  scale_y_continuous(labels = scales::label_number(scale = 1e-3, big.mark = "")) +
+  ylab("Coded wire tag releases (thousands)") +
+  xlab("Brood year") +
+  scale_x_continuous(breaks = c(2010, 2015, 2020)) +
   theme(
     # Makes the facet label background white
     strip.background = element_rect(fill = "white"),
@@ -114,15 +122,17 @@ ggsave("figures/S1_release_trends_cwt.png", width = 7, height = 6)
 
 
 dplyr::filter(subset, pretty_name != "Whatcom Creek", release_year <= 2023) |>
-  dplyr::group_by(release_year, pretty_name, run) |>
+  dplyr::group_by(brood_year, pretty_name, run) |>
   dplyr::summarise(n_tot = sum(total_releases)) |>
-  ggplot(aes(release_year, n_tot, color = run)) +
+  ggplot(aes(brood_year, n_tot, color = run)) +
   geom_line() +
   geom_point() +
   facet_wrap(~pretty_name, scale = "free_y", ncol = 4) +
   theme_bw() +
-  ylab("All releases") +
-  xlab("Release year") +
+  scale_y_continuous(labels = scales::label_number(scale = 1e-3, big.mark = "")) +
+  ylab("Coded wire tag releases (thousands)") +
+  xlab("Brood year") +
+  scale_x_continuous(breaks = c(2010, 2015, 2020)) +
   theme(
     # Makes the facet label background white
     strip.background = element_rect(fill = "white"),
