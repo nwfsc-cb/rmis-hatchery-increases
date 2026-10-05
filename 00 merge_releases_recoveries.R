@@ -19,18 +19,44 @@ rel$cwt_1st_mark_count[which(is.na(rel$cwt_1st_mark_count))] <- 0
 rel$cwt_2nd_mark_count[which(is.na(rel$cwt_2nd_mark_count))] <- 0
 rel$cwt_total <- rel$cwt_1st_mark_count + rel$cwt_2nd_mark_count
 
+rel <- dplyr::filter(rel, release_stage != "Y")
+
 rel$release_year <- as.numeric(as.character(substr(rel$first_release_date, 1, 4)))
 
+# rel$period <- "Before"
+# rel$period[which(rel$hatchery_location_name == "NASELLE HATCHERY" & rel$release_year >= 2020)] <- "After"
+# rel$period[which(rel$hatchery_location_name == "MINTER CR HATCHERY" & rel$release_year >= 2019)] <- "After"
+# rel$period[which(rel$hatchery_location_name == "SOOS CREEK HATCHERY" & rel$release_year >= 2020)] <- "After"
+# rel$treatment_control <- "Control"
+# rel$treatment_control[which(rel$hatchery_location_name %in% c(
+#   "NASELLE HATCHERY", "MINTER CR HATCHERY",
+#   "SOOS CREEK HATCHERY"
+# ))] <- "Treatment"
+# Define period (Before / After)
 rel$period <- "Before"
-rel$period[which(rel$hatchery_location_name == "NASELLE HATCHERY" & rel$release_year >= 2020)] <- "After"
-rel$period[which(rel$hatchery_location_name == "MINTER CR HATCHERY" & rel$release_year >= 2019)] <- "After"
-rel$period[which(rel$hatchery_location_name == "SOOS CREEK HATCHERY" & rel$release_year >= 2020)] <- "After"
-rel$treatment_control <- "Control"
-rel$treatment_control[which(rel$hatchery_location_name %in% c(
-  "NASELLE HATCHERY", "MINTER CR HATCHERY",
-  "SOOS CREEK HATCHERY"
-))] <- "Treatment"
+rel$period[which(rel$release_location_name == "NASELLE R    24.0543" & rel$release_year >= 2020)] <- "After"
+rel$period[which(rel$release_location_name %in% c("MINTER CR    15.0048", "MINTER CR TR 15.0051") & rel$release_year >= 2019)] <- "After"
+rel$period[which(rel$release_location_rmis_basin == "DUWA" &
+  rel$stock_location_name %in% c("BIG SOOS CR  09.0072", "SOOS CR+GREEN R NATIVE") &
+  rel$release_year >= 2020)] <- "After"
 
+# Define treatment vs. control
+rel$treatment_control <- NA
+
+# Treatment groups
+rel$treatment_control[which(rel$release_location_name == "NASELLE R    24.0543")] <- "Treatment"
+rel$treatment_control[which(rel$release_location_name %in% c("MINTER CR    15.0048", "MINTER CR TR 15.0051"))] <- "Treatment"
+rel$treatment_control[which(rel$release_location_rmis_basin == "DUWA" &
+  rel$stock_location_name %in% c("BIG SOOS CR  09.0072", "SOOS CR+GREEN R NATIVE"))] <- "Treatment"
+
+# Control groups
+rel$treatment_control[which(rel$release_location_name %in% c("NORTH NEMAH R24.0460", "N NEMAH R TR 24.0498", "M NEMAH R TR 24.0508"))] <- "Control"
+rel$treatment_control[which(rel$release_location_name %in% c("CLEAR CR    11.0013C", "KALAMA CR    11.0017", "MCALLISTER SPRINGS HATCH"))] <- "Control"
+rel$treatment_control[which(rel$release_location_rmis_basin == "EKPN" &
+  rel$release_location_name %in% c("GROVERS CR   15.0299", "GROVERS CR HATCHERY"))] <- "Control"
+
+# Keep ONLY the defined BACI study groups
+rel <- dplyr::filter(rel, !is.na(treatment_control))
 
 # tags_to_keep <- which(recoveries$tag_code %in% rel$tag_code)
 # recoveries <- recoveries[tags_to_keep,]
