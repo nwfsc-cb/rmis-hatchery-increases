@@ -125,12 +125,13 @@ seeds <- sample(5000, nsims, replace = FALSE)
 #plot result function
 plot_sim_results <- function(sim_res, title) {
   plot1 <- ggplot() +
+    geom_line(aes(x = release_options, y = sim_res)) +
     geom_point(aes(x = release_options, y = sim_res)) +
     labs(
       x = "Treatment releases/control releases",
       y = "Proportion signficant"
     ) +
-    theme_classic() +
+    theme_minimal() +
     ggtitle(title)
   return(print(plot1))
 }
