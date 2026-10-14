@@ -11,49 +11,60 @@ for (y in 2010:2025) {
   }
 }
 
-# these are all recoveries from washington state after 1995
+# Load and clean release data
 rel <- read.csv("data/CSV12935.TXT") |>
   dplyr::select(-record_code) |>
-  dplyr::rename(tag_code = tag_code_or_release_id)
-rel$cwt_1st_mark_count[which(is.na(rel$cwt_1st_mark_count))] <- 0
-rel$cwt_2nd_mark_count[which(is.na(rel$cwt_2nd_mark_count))] <- 0
-rel$cwt_total <- rel$cwt_1st_mark_count + rel$cwt_2nd_mark_count
+  dplyr::rename(tag_code = tag_code_or_release_id) |>
+  mutate(
+    cwt_1st_mark_count = ifelse(is.na(cwt_1st_mark_count), 0, cwt_1st_mark_count),
+    cwt_2nd_mark_count = ifelse(is.na(cwt_2nd_mark_count), 0, cwt_2nd_mark_count),
+    cwt_total = cwt_1st_mark_count + cwt_2nd_mark_count
+  ) |>
+  filter(release_stage != "Y") |>
+  mutate(release_year = as.numeric(substr(first_release_date, 1, 4)))
 
-rel <- dplyr::filter(rel, release_stage != "Y")
+# Define Treatment vs. Control groups
+rel <- rel |>
+  mutate(
+    treatment_control = case_when(
+      # Treatment Groups
+      release_location_name == "NASELLE R    24.0543" ~ "Treatment",
+      release_location_name %in% c("MINTER CR    15.0048", "MINTER CR TR 15.0051") ~ "Treatment",
+      release_location_rmis_basin == "DUWA" &
+        stock_location_name %in% c("BIG SOOS CR  09.0072", "SOOS CR+GREEN R NATIVE") ~ "Treatment",
+      # Control Groups
+      release_location_name %in% c("NORTH NEMAH R24.0460", "N NEMAH R TR 24.0498", "M NEMAH R TR 24.0508") ~ "Control",
+      release_location_name %in% c("CLEAR CR    11.0013C", "KALAMA CR    11.0017", "MCALLISTER SPRINGS HATCH") ~ "Control",
+      release_location_rmis_basin == "EKPN" &
+        release_location_name %in% c("GROVERS CR   15.0299", "GROVERS CR HATCHERY") ~ "Control",
+      TRUE ~ NA_character_
+    )
+  )
 
-rel$release_year <- as.numeric(as.character(substr(rel$first_release_date, 1, 4)))
+# Define groupings to apply "Before" vs "After" universally across Treatment & Control
+# - 1 (Naselle / Nemah): After cutoff = 2020
+# - 2 (Minter / Clear / Kalama / McAllister): After cutoff = 2019
+# - 3 (Duwamish / Grovers): After cutoff = 2020
 
-# rel$period <- "Before"
-# rel$period[which(rel$hatchery_location_name == "NASELLE HATCHERY" & rel$release_year >= 2020)] <- "After"
-# rel$period[which(rel$hatchery_location_name == "MINTER CR HATCHERY" & rel$release_year >= 2019)] <- "After"
-# rel$period[which(rel$hatchery_location_name == "SOOS CREEK HATCHERY" & rel$release_year >= 2020)] <- "After"
-# rel$treatment_control <- "Control"
-# rel$treatment_control[which(rel$hatchery_location_name %in% c(
-#   "NASELLE HATCHERY", "MINTER CR HATCHERY",
-#   "SOOS CREEK HATCHERY"
-# ))] <- "Treatment"
-# Define period (Before / After)
-rel$period <- "Before"
-rel$period[which(rel$release_location_name == "NASELLE R    24.0543" & rel$release_year >= 2020)] <- "After"
-rel$period[which(rel$release_location_name %in% c("MINTER CR    15.0048", "MINTER CR TR 15.0051") & rel$release_year >= 2019)] <- "After"
-rel$period[which(rel$release_location_rmis_basin == "DUWA" &
-  rel$stock_location_name %in% c("BIG SOOS CR  09.0072", "SOOS CR+GREEN R NATIVE") &
-  rel$release_year >= 2020)] <- "After"
+rel <- rel |>
+  filter(!is.na(treatment_control)) |>
+  mutate(
+    region = case_when(
+      release_location_name %in% c("NASELLE R    24.0543", "NORTH NEMAH R24.0460", "N NEMAH R TR 24.0498", "M NEMAH R TR 24.0508") ~ "Willapa",
+      release_location_name %in% c("MINTER CR    15.0048", "MINTER CR TR 15.0051", "CLEAR CR    11.0013C", "KALAMA CR    11.0017", "MCALLISTER SPRINGS HATCH") ~ "South Sound",
+      release_location_rmis_basin %in% c("DUWA", "EKPN") ~ "Central Sound",
+      TRUE ~ "Other"
+    ),
+    period = case_when(
+      region == "Willapa" & release_year >= 2020 ~ "After",
+      region == "South Sound" & release_year >= 2019 ~ "After",
+      region == "Central Sound" & release_year >= 2020 ~ "After",
+      TRUE ~ "Before"
+    )
+  )
 
-# Define treatment vs. control
-rel$treatment_control <- NA
-
-# Treatment groups
-rel$treatment_control[which(rel$release_location_name == "NASELLE R    24.0543")] <- "Treatment"
-rel$treatment_control[which(rel$release_location_name %in% c("MINTER CR    15.0048", "MINTER CR TR 15.0051"))] <- "Treatment"
-rel$treatment_control[which(rel$release_location_rmis_basin == "DUWA" &
-  rel$stock_location_name %in% c("BIG SOOS CR  09.0072", "SOOS CR+GREEN R NATIVE"))] <- "Treatment"
-
-# Control groups
-rel$treatment_control[which(rel$release_location_name %in% c("NORTH NEMAH R24.0460", "N NEMAH R TR 24.0498", "M NEMAH R TR 24.0508"))] <- "Control"
-rel$treatment_control[which(rel$release_location_name %in% c("CLEAR CR    11.0013C", "KALAMA CR    11.0017", "MCALLISTER SPRINGS HATCH"))] <- "Control"
-rel$treatment_control[which(rel$release_location_rmis_basin == "EKPN" &
-  rel$release_location_name %in% c("GROVERS CR   15.0299", "GROVERS CR HATCHERY"))] <- "Control"
+# Check the BACI table
+table(rel$treatment_control, rel$period)
 
 # Keep ONLY the defined BACI study groups
 rel <- dplyr::filter(rel, !is.na(treatment_control))
