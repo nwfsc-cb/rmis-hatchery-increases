@@ -69,21 +69,25 @@ rel <- rel |>
 # Check the BACI table
 table(rel$treatment_control, rel$period)
 
-# Keep ONLY the defined BACI study groups
+# Keep the defined BACI study groups
 rel <- dplyr::filter(rel, !is.na(treatment_control))
 
 avg_releases <- rel |>
   filter(!is.na(treatment_control)) |>
-  group_by(treatment_control, period, release_location_name) |>
+  group_by(period, region, release_year, treatment_control) |>
   summarize(
-    mean_releases = mean(cwt_total, na.rm = TRUE),
-    median_releases = median(cwt_total, na.rm = TRUE),
-    total_releases = sum(cwt_total, na.rm = TRUE),
-    num_release_groups = n(),
+    mean_releases = sum(total_tags, na.rm = TRUE),
     .groups = "drop"
   ) |>
-  arrange(treatment_control, release_location_name, period)
-
+  dplyr::group_by(period, region, treatment_control) |>
+  summarize(
+    mean_releases = mean(mean_releases, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  arrange(treatment_control, region, period)
+avg_releases$Hatchery <- "Naselle"
+avg_releases$Hatchery[which(avg_releases$region == "South Sound")] <- "Minter"
+avg_releases$Hatchery[which(avg_releases$region == "Central Sound")] <- "Soos"
 
 # tags_to_keep <- which(recoveries$tag_code %in% rel$tag_code)
 # recoveries <- recoveries[tags_to_keep,]
