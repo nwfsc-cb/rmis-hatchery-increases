@@ -18,7 +18,10 @@ rel <- read.csv("data/CSV12935.TXT") |>
   mutate(
     cwt_1st_mark_count = ifelse(is.na(cwt_1st_mark_count), 0, cwt_1st_mark_count),
     cwt_2nd_mark_count = ifelse(is.na(cwt_2nd_mark_count), 0, cwt_2nd_mark_count),
-    cwt_total = cwt_1st_mark_count + cwt_2nd_mark_count
+    cwt_total = cwt_1st_mark_count + cwt_2nd_mark_count,
+    non_cwt_1st_mark_count = ifelse(is.na(non_cwt_1st_mark_count), 0, non_cwt_1st_mark_count),
+    non_cwt_2nd_mark_count = ifelse(is.na(non_cwt_2nd_mark_count), 0, non_cwt_2nd_mark_count),
+    total_tags = cwt_total + non_cwt_1st_mark_count + non_cwt_2nd_mark_count
   ) |>
   filter(release_stage != "Y") |>
   mutate(release_year = as.numeric(substr(first_release_date, 1, 4)))
@@ -69,6 +72,19 @@ table(rel$treatment_control, rel$period)
 # Keep ONLY the defined BACI study groups
 rel <- dplyr::filter(rel, !is.na(treatment_control))
 
+avg_releases <- rel |>
+  filter(!is.na(treatment_control)) |>
+  group_by(treatment_control, period, release_location_name) |>
+  summarize(
+    mean_releases = mean(cwt_total, na.rm = TRUE),
+    median_releases = median(cwt_total, na.rm = TRUE),
+    total_releases = sum(cwt_total, na.rm = TRUE),
+    num_release_groups = n(),
+    .groups = "drop"
+  ) |>
+  arrange(treatment_control, release_location_name, period)
+
+
 # tags_to_keep <- which(recoveries$tag_code %in% rel$tag_code)
 # recoveries <- recoveries[tags_to_keep,]
 # filter out fish that were released outside of OR or WA -- these
@@ -91,6 +107,7 @@ joined <- dplyr::select(
   run,
   brood_year,
   cwt_total,
+  total_tags,
   recovery_location_name,
   stock_location_name,
   release_location_state,
