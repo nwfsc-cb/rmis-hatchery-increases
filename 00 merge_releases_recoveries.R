@@ -72,7 +72,7 @@ table(rel$treatment_control, rel$period)
 # Keep the defined BACI study groups
 rel <- dplyr::filter(rel, !is.na(treatment_control))
 
-avg_releases <- rel |>
+avg_releases <- dplyr::filter(rel, brood_year <= 2022, brood_year >= 2010) |>
   filter(!is.na(treatment_control)) |>
   group_by(period, region, release_year, treatment_control) |>
   summarize(
