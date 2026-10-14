@@ -12,7 +12,7 @@ for (y in 2010:2025) {
 }
 
 # these are all recoveries from washington state after 1995
-rel <- read.csv("data/releases_2010_2026.csv") |>
+rel <- read.csv("data/CSV12935.TXT") |>
   dplyr::select(-record_code) |>
   dplyr::rename(tag_code = tag_code_or_release_id)
 rel$cwt_1st_mark_count[which(is.na(rel$cwt_1st_mark_count))] <- 0
