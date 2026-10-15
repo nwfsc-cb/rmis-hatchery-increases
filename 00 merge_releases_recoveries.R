@@ -16,11 +16,27 @@ rel <- read.csv("data/CSV12935.TXT") |>
   dplyr::select(-record_code) |>
   dplyr::rename(tag_code = tag_code_or_release_id) |>
   mutate(
-    cwt_1st_mark_count = ifelse(is.na(cwt_1st_mark_count), 0, cwt_1st_mark_count),
-    cwt_2nd_mark_count = ifelse(is.na(cwt_2nd_mark_count), 0, cwt_2nd_mark_count),
+    cwt_1st_mark_count = ifelse(
+      is.na(cwt_1st_mark_count),
+      0,
+      cwt_1st_mark_count
+    ),
+    cwt_2nd_mark_count = ifelse(
+      is.na(cwt_2nd_mark_count),
+      0,
+      cwt_2nd_mark_count
+    ),
     cwt_total = cwt_1st_mark_count + cwt_2nd_mark_count,
-    non_cwt_1st_mark_count = ifelse(is.na(non_cwt_1st_mark_count), 0, non_cwt_1st_mark_count),
-    non_cwt_2nd_mark_count = ifelse(is.na(non_cwt_2nd_mark_count), 0, non_cwt_2nd_mark_count),
+    non_cwt_1st_mark_count = ifelse(
+      is.na(non_cwt_1st_mark_count),
+      0,
+      non_cwt_1st_mark_count
+    ),
+    non_cwt_2nd_mark_count = ifelse(
+      is.na(non_cwt_2nd_mark_count),
+      0,
+      non_cwt_2nd_mark_count
+    ),
     total_tags = cwt_total + non_cwt_1st_mark_count + non_cwt_2nd_mark_count
   ) |>
   filter(release_stage != "Y") |>
@@ -32,14 +48,27 @@ rel <- rel |>
     treatment_control = case_when(
       # Treatment Groups
       release_location_name == "NASELLE R    24.0543" ~ "Treatment",
-      release_location_name %in% c("MINTER CR    15.0048", "MINTER CR TR 15.0051") ~ "Treatment",
+      release_location_name %in%
+        c("MINTER CR    15.0048", "MINTER CR TR 15.0051") ~ "Treatment",
       release_location_rmis_basin == "DUWA" &
-        stock_location_name %in% c("BIG SOOS CR  09.0072", "SOOS CR+GREEN R NATIVE") ~ "Treatment",
+        stock_location_name %in%
+          c("BIG SOOS CR  09.0072", "SOOS CR+GREEN R NATIVE") ~ "Treatment",
       # Control Groups
-      release_location_name %in% c("NORTH NEMAH R24.0460", "N NEMAH R TR 24.0498", "M NEMAH R TR 24.0508") ~ "Control",
-      release_location_name %in% c("CLEAR CR    11.0013C", "KALAMA CR    11.0017", "MCALLISTER SPRINGS HATCH") ~ "Control",
+      release_location_name %in%
+        c(
+          "NORTH NEMAH R24.0460",
+          "N NEMAH R TR 24.0498",
+          "M NEMAH R TR 24.0508"
+        ) ~ "Control",
+      release_location_name %in%
+        c(
+          "CLEAR CR    11.0013C",
+          "KALAMA CR    11.0017",
+          "MCALLISTER SPRINGS HATCH"
+        ) ~ "Control",
       release_location_rmis_basin == "EKPN" &
-        release_location_name %in% c("GROVERS CR   15.0299", "GROVERS CR HATCHERY") ~ "Control",
+        release_location_name %in%
+          c("GROVERS CR   15.0299", "GROVERS CR HATCHERY") ~ "Control",
       TRUE ~ NA_character_
     )
   )
@@ -53,8 +82,21 @@ rel <- rel |>
   filter(!is.na(treatment_control)) |>
   mutate(
     region = case_when(
-      release_location_name %in% c("NASELLE R    24.0543", "NORTH NEMAH R24.0460", "N NEMAH R TR 24.0498", "M NEMAH R TR 24.0508") ~ "Willapa",
-      release_location_name %in% c("MINTER CR    15.0048", "MINTER CR TR 15.0051", "CLEAR CR    11.0013C", "KALAMA CR    11.0017", "MCALLISTER SPRINGS HATCH") ~ "South Sound",
+      release_location_name %in%
+        c(
+          "NASELLE R    24.0543",
+          "NORTH NEMAH R24.0460",
+          "N NEMAH R TR 24.0498",
+          "M NEMAH R TR 24.0508"
+        ) ~ "Willapa",
+      release_location_name %in%
+        c(
+          "MINTER CR    15.0048",
+          "MINTER CR TR 15.0051",
+          "CLEAR CR    11.0013C",
+          "KALAMA CR    11.0017",
+          "MCALLISTER SPRINGS HATCH"
+        ) ~ "South Sound",
       release_location_rmis_basin %in% c("DUWA", "EKPN") ~ "Central Sound",
       TRUE ~ "Other"
     ),
@@ -94,7 +136,11 @@ avg_releases$Hatchery[which(avg_releases$region == "Central Sound")] <- "Soos"
 # filter out fish that were released outside of OR or WA -- these
 # releases are just from those states. this also includes potentially
 # hatcheries that released fish but
-joined <- dplyr::left_join(dplyr::select(recoveries, -period), rel, by = "tag_code") |>
+joined <- dplyr::left_join(
+  dplyr::select(recoveries, -period),
+  rel,
+  by = "tag_code"
+) |>
   dplyr::filter(
     !is.na(number_cwt_estimated),
     !is.na(cwt_total)
@@ -126,7 +172,8 @@ joined <- dplyr::select(
   avg_length,
   avg_weight,
   period,
-  treatment_control
+  treatment_control,
+  region
 )
 
 # locations
@@ -147,19 +194,31 @@ joined <- dplyr::left_join(joined, locs)
 # add fishery regions
 # joined$recovery_location_code
 joined$fishery_region <- "Other"
-joined$fishery_region[which(substr(joined$recovery_location_code, 1, 2) == "1M")] <- "Alaska"
-joined$fishery_region[which(substr(joined$recovery_location_code, 1, 2) == "2M")] <- "BC"
-joined$fishery_region[which(substr(joined$recovery_location_code, 1, 2) == "3M")] <- "Washington"
-joined$fishery_region[which(substr(joined$recovery_location_code, 1, 2) == "5M")] <- "Oregon"
-joined$fishery_region[which(substr(joined$recovery_location_code, 1, 2) == "6M")] <- "California"
+joined$fishery_region[which(
+  substr(joined$recovery_location_code, 1, 2) == "1M"
+)] <- "Alaska"
+joined$fishery_region[which(
+  substr(joined$recovery_location_code, 1, 2) == "2M"
+)] <- "BC"
+joined$fishery_region[which(
+  substr(joined$recovery_location_code, 1, 2) == "3M"
+)] <- "Washington"
+joined$fishery_region[which(
+  substr(joined$recovery_location_code, 1, 2) == "5M"
+)] <- "Oregon"
+joined$fishery_region[which(
+  substr(joined$recovery_location_code, 1, 2) == "6M"
+)] <- "California"
 
 # rel |>
 #   dplyr::filter(hatchery_location_name == "CLARKS CRK HATCHERY") |>
 #   dplyr::group_by(brood_year) |>
 #   dplyr::summarise(n = sum(cwt_total))
 
-
 write.csv(joined, "data/joined_data.csv")
+
+#save average releases for predictions
+write.csv(avg_releases, "data/avg_releases.csv")
 
 ##################################################################
 # The whole point of this block is to do some labeling and for
@@ -172,19 +231,28 @@ treatment_hatcheries$release_location_rmis_basin <- ""
 treatment_hatcheries$comment <- ""
 
 for (i in 1:nrow(treatment_hatcheries)) {
-  sub <- dplyr::filter(rel, hatchery_location_name == treatment_hatcheries$release_location_name[i])
+  sub <- dplyr::filter(
+    rel,
+    hatchery_location_name == treatment_hatcheries$release_location_name[i]
+  )
 
   if (treatment_hatcheries$release_location_name[i] == "MARBLEMOUNT HATCHERY") {
     sub$release_location_rmis_basin <- "UPSK"
-    treatment_hatcheries$comment[i] <- "All releases from SKAG-UPSK are from this hatchery"
+    treatment_hatcheries$comment[
+      i
+    ] <- "All releases from SKAG-UPSK are from this hatchery"
   }
   if (treatment_hatcheries$release_location_name[i] == "WELLS HATCHERY") {
     sub <- dplyr::filter(sub, release_location_rmis_region == "CRGN")
-    treatment_hatcheries$comment[i] <- "Mis releases in 2017-2018 from UPCR filtered out"
+    treatment_hatcheries$comment[
+      i
+    ] <- "Mis releases in 2017-2018 from UPCR filtered out"
   }
   if (treatment_hatcheries$release_location_name[i] == "BONNEVILLE HATCHERY") {
     sub <- dplyr::filter(sub, release_location_name == "TANNER CR (BNVILLE)")
-    treatment_hatcheries$comment[i] <- "Mis releases in Umatilla / Yakima filtered out"
+    treatment_hatcheries$comment[
+      i
+    ] <- "Mis releases in Umatilla / Yakima filtered out"
   }
   if (treatment_hatcheries$release_location_name[i] == "MINTER CR HATCHERY") {
     sub <- dplyr::filter(sub, release_location_rmis_basin == "EKPS")
@@ -196,10 +264,14 @@ for (i in 1:nrow(treatment_hatcheries)) {
   }
 
   if (length(unique(sub$release_location_rmis_region)) == 1) {
-    treatment_hatcheries$release_location_rmis_region[i] <- sub$release_location_rmis_region[1]
+    treatment_hatcheries$release_location_rmis_region[
+      i
+    ] <- sub$release_location_rmis_region[1]
   }
   if (length(unique(sub$release_location_rmis_basin)) == 1) {
-    treatment_hatcheries$release_location_rmis_basin[i] <- sub$release_location_rmis_basin[1]
+    treatment_hatcheries$release_location_rmis_basin[
+      i
+    ] <- sub$release_location_rmis_basin[1]
   }
 }
 write.csv(treatment_hatcheries, "data/treatment_hatcheries_rmis.csv")

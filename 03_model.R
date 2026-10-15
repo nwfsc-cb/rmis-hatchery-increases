@@ -1,6 +1,6 @@
 #RMIS GLMM
 #Zoe Rand
-#last updated 9 October 2026
+#last updated 15 October 2026
 
 library(tidyverse)
 library(glmmTMB)
@@ -27,9 +27,11 @@ library(modelsummary) #for supplement tables
 #   rel$non_cwt_1st_mark_count +
 #   rel$non_cwt_2nd_mark_count
 
-#read in recoveries
+#read in data
 rec <- read_csv("data/joined_data.csv")
 
+#read in average total releases for predictions
+avg_releases <- read_csv("data/avg_releases.csv")
 
 # #read in model data
 
@@ -42,23 +44,22 @@ rec <- read_csv("data/joined_data.csv")
 
 # head(dat$Soos)
 
-#adding "after" designations to control hatcheries
-rec2 <- rec %>%
-  mutate(
-    period = ifelse(
-      model_group %in% c("Soos", "Naselle") & release_year >= 2020,
-      "After",
-      period
-    )
-  ) %>%
-  mutate(
-    period = ifelse(
-      model_group == "Minter" & release_year >= 2020,
-      "After",
-      period
-    )
-  )
-
+# #adding "after" designations to control hatcheries
+# rec2 <- rec %>%
+#   mutate(
+#     period = ifelse(
+#       model_group %in% c("Soos", "Naselle") & release_year >= 2020,
+#       "After",
+#       period
+#     )
+#   ) %>%
+#   mutate(
+#     period = ifelse(
+#       model_group == "Minter" & release_year >= 2020,
+#       "After",
+#       period
+#     )
+#   )
 
 # dat$Soos$release_year <- as.numeric(substr(dat$Soos$first_release_date, 1, 4))
 # dat$Naselle$release_year <- as.numeric(substr(
@@ -77,8 +78,9 @@ rec2 <- rec %>%
 
 #the recoveries are by fish so need to summarise for the model
 #switching to using raw recoveries rather than the estimated ones
-mod_dat_soos <- rec2 %>%
-  filter(model_group == "Soos") %>%
+mod_dat_soos <- rec %>%
+  filter(region == "Central Sound") %>%
+  filter(brood_year <= 2022) %>%
   group_by(
     brood_year,
     fishery_region,
@@ -87,10 +89,12 @@ mod_dat_soos <- rec2 %>%
   ) %>%
   summarise(n_recovered = n()) %>%
   add_column(model_group = "Soos") %>%
+  add_column(region = "Central Sound") %>%
   ungroup()
 
-mod_dat_naselle <- rec2 %>%
-  filter(model_group == "Naselle") %>%
+mod_dat_naselle <- rec %>%
+  filter(region == "Willapa") %>%
+  filter(brood_year <= 2022) %>%
   group_by(
     brood_year,
     fishery_region,
@@ -99,10 +103,12 @@ mod_dat_naselle <- rec2 %>%
   ) %>%
   summarise(n_recovered = n()) %>%
   add_column(model_group = "Naselle") %>%
+  add_column(region = "Willapa") %>%
   ungroup()
 
-mod_dat_minter <- rec2 %>%
-  filter(model_group == "Minter") %>%
+mod_dat_minter <- rec %>%
+  filter(region == "South Sound") %>%
+  filter(brood_year <= 2022) %>%
   group_by(
     brood_year,
     fishery_region,
@@ -111,26 +117,28 @@ mod_dat_minter <- rec2 %>%
   ) %>%
   summarise(n_recovered = n()) %>%
   add_column(model_group = "Minter") %>%
+  add_column(region = "South Sound") %>%
   ungroup()
 
 #get total releases
-releases <- rec2 %>%
-  group_by(model_group, treatment_control, release_year, brood_year) %>%
+releases <- rec %>%
+  group_by(region, treatment_control, brood_year) %>%
   summarise(release_total = sum(unique(cwt_total))) %>%
   mutate(log_releases = log(release_total))
+
 # rel_by_hatch <- rel %>%
 #   group_by(brood_year, hatchery_location_name) %>%
 #   summarise(release_total = sum(total_releases)) %>%
 #   mutate(log_rel_total = log(release_total))
 
 mod_dat_soos <- mod_dat_soos %>%
-  left_join(releases, by = c("model_group", "treatment_control", "brood_year"))
+  left_join(releases, by = c("region", "treatment_control", "brood_year"))
 
 mod_dat_naselle <- mod_dat_naselle %>%
-  left_join(releases, by = c("model_group", "treatment_control", "brood_year"))
+  left_join(releases, by = c("region", "treatment_control", "brood_year"))
 
 mod_dat_minter <- mod_dat_minter %>%
-  left_join(releases, by = c("model_group", "treatment_control", "brood_year"))
+  left_join(releases, by = c("region", "treatment_control", "brood_year"))
 
 # #removing hatcheries that aren't treatments or controls
 # mod_dat_soos <- mod_dat_soos %>%
@@ -144,6 +152,9 @@ mod_dat_soos <- mod_dat_soos %>% filter(fishery_region != "Alaska")
 
 #Naselle removing Oregon because there's no control-before for that region
 mod_dat_naselle <- mod_dat_naselle %>% filter(fishery_region != "Oregon")
+
+#Minter remvoing Alaska because only 1 recovery in treatment in the after
+mod_dat_minter <- mod_dat_minter %>% filter(fishery_region != "Alaska")
 
 
 # Plotting model data ----------------------------------------------------
@@ -260,30 +271,30 @@ soos_recs <- plot_mod_dat(mod_dat_soos, 2019, "Soos creek")
 naselle_recs <- plot_mod_dat(mod_dat_naselle, 2019, "Naselle")
 minter_recs <- plot_mod_dat(mod_dat_minter, 2019, "Minter creek")
 
-# ggsave(
-#   "figures/soos_recs.png",
-#   soos_recs,
-#   dpi = 600,
-#   width = 8,
-#   height = 4,
-#   units = "in"
-# )
-# ggsave(
-#   "figures/naselle_recs.png",
-#   naselle_recs,
-#   dpi = 600,
-#   width = 8,
-#   height = 4,
-#   units = "in"
-# )
-# ggsave(
-#   "figures/minter_recs.png",
-#   minter_recs,
-#   dpi = 600,
-#   width = 8,
-#   height = 4,
-#   units = "in"
-# )
+ggsave(
+  "figures/soos_recs.png",
+  soos_recs,
+  dpi = 600,
+  width = 8,
+  height = 4,
+  units = "in"
+)
+ggsave(
+  "figures/naselle_recs.png",
+  naselle_recs,
+  dpi = 600,
+  width = 8,
+  height = 4,
+  units = "in"
+)
+ggsave(
+  "figures/minter_recs.png",
+  minter_recs,
+  dpi = 600,
+  width = 8,
+  height = 4,
+  units = "in"
+)
 
 # Model ------------------------------------------------------------------
 
@@ -336,37 +347,54 @@ plot_mod_results <- function(fit, dat) {
   print(plot(EMM_2))
 
   #getting average offset for each group
-  release_dat <- dat %>%
-    select(
-      brood_year,
-      release_total,
-      hatchery_location_name_fac,
-      treatment_control,
-      period
+  # release_dat <- dat %>%
+  #   select(
+  #     brood_year,
+  #     release_total,
+  #     treatment_control,
+  #     period
+  #   ) %>%
+  #   distinct()
+
+  # release_avg <- release_dat %>%
+  #   group_by(treatment_control, period) %>%
+  #   summarise(mean_rel = mean(release_total))
+
+  # avg_offset_rel <- dat %>%
+  #   group_by(treatment_control, period_f, fishery_region_f) %>%
+  #   summarise(n = n()) %>%
+  #   left_join(release_avg, by = c("treatment_control", "period_f" = "period"))
+  offsets <- expand_grid(
+    treatment_control = unique(dat$treatment_control),
+    period_f = unique(dat$period_f),
+    fishery_region_f = unique(dat$fishery_region_f)
+  ) %>%
+    arrange(fishery_region_f, period_f, treatment_control)
+  #print(offsets)
+  avg_offset_rel <- avg_releases %>%
+    mutate(
+      period_f = relevel(
+        factor(avg_releases$period),
+        ref = "Before"
+      )
     ) %>%
-    distinct()
+    ungroup() %>%
+    filter(Hatchery == dat$model_group[1]) %>%
+    right_join(offsets, by = c('treatment_control', "period_f")) %>%
+    arrange(fishery_region_f, period_f, treatment_control)
 
-  release_avg <- release_dat %>%
-    group_by(treatment_control, period) %>%
-    summarise(mean_rel = mean(release_total))
+  # avg_offset_rel$period_f <- relevel(
+  #   factor(avg_offset_rel$period_f),
+  #   ref = "Before"
+  # )
 
-  avg_offset_rel <- dat %>%
-    group_by(treatment_control, period_f, fishery_region_f) %>%
-    summarise(n = n()) %>%
-    left_join(release_avg, by = c("treatment_control", "period_f" = "period"))
-
-  avg_offset_rel$period_f <- relevel(
-    factor(avg_offset_rel$period_f),
-    ref = "Before"
-  )
-
-  avg_offset_rel <- avg_offset_rel %>% arrange(fishery_region_f, period_f)
+  #avg_offset_rel <- avg_offset_rel %>% arrange(fishery_region_f, period_f)
   print(avg_offset_rel)
 
   EMM_ip_2 <- emmip(
     fit,
     treatment_control ~ period_f | fishery_region_f,
-    offset = log(avg_offset_rel$mean_rel),
+    offset = log(avg_offset_rel$mean_releases),
     CIs = TRUE,
     plotit = FALSE
   )
@@ -413,7 +441,7 @@ fit4 <- glmmTMB(
     period_f *
     fishery_region_f +
     (1 | brood_year) +
-    offset(log_rel_total),
+    offset(log_releases),
   family = nbinom2,
   data = mod_dat_naselle
 )
@@ -458,7 +486,7 @@ fit6 <- glmmTMB(
     period_f *
     fishery_region_f +
     (1 | brood_year) +
-    offset(log_rel_total),
+    offset(log_releases),
   family = nbinom2,
   data = mod_dat_minter
 )
@@ -495,14 +523,14 @@ plot_tog <- soos_plot /
 
 plot_tog
 
-# ggsave(
-#   "figures/mod_results.png",
-#   plot_tog,
-#   dpi = 300,
-#   width = 6,
-#   height = 10,
-#   units = "in"
-# )
+ggsave(
+  "figures/mod_results.png",
+  plot_tog,
+  dpi = 300,
+  width = 6,
+  height = 10,
+  units = "in"
+)
 
 # Table for supplement ---------------------------------------------------
 options(modelsummary_get = "broom")
@@ -565,54 +593,66 @@ plt_all_re <- re_all %>%
 
 plt_all_re
 
-# ggsave(
-#   "figures/random_effects.png",
-#   plt_all_re,
-#   width = 6,
-#   height = 6,
-#   units = "in"
-# )
+ggsave(
+  "figures/random_effects.png",
+  plt_all_re,
+  width = 6,
+  height = 6,
+  units = "in"
+)
 
 # Data summary for paper -------------------------------------------------
-mod_dat_soos %>%
+summ_soos <- mod_dat_soos %>%
   group_by(treatment_control, period) %>%
   summarise(
     n_rec_tot = sum(n_recovered),
     avg_rec = mean(n_recovered),
     tot_rel = sum(release_total),
     avg_rel = mean(release_total)
-  )
-mod_dat_naselle %>%
+  ) %>%
+  add_column(region = "Soos")
+
+summ_naselle <- mod_dat_naselle %>%
   group_by(treatment_control, period) %>%
   summarise(
     n_rec_tot = sum(n_recovered),
     avg_rec = mean(n_recovered),
     tot_rel = sum(release_total),
     avg_rel = mean(release_total)
-  )
-mod_dat_minter %>%
+  ) %>%
+  add_column(region = "Naselle")
+
+summ_minter <- mod_dat_minter %>%
   group_by(treatment_control, period) %>%
   summarise(
     n_rec_tot = sum(n_recovered),
     avg_rec = mean(n_recovered),
     tot_rel = sum(release_total),
     avg_rel = mean(release_total)
-  )
+  ) %>%
+  add_column(region = "Minter")
+
+
+summ_all <- bind_rows(summ_soos, summ_naselle, summ_minter)
+
+#caluclate fraction tagged
+
+write_csv(summ_all, "data_summary.csv")
 
 mod_dat_soos %>%
-  group_by(hatchery_location_name_fac) %>%
+  #group_by(hatchery_location_name_fac) %>%
   summarise(
     max = max(n_recovered),
     by = brood_year[which(n_recovered == max(n_recovered))]
   )
 mod_dat_naselle %>%
-  group_by(hatchery_location_name_fac) %>%
+  #group_by(hatchery_location_name_fac) %>%
   summarise(
     max = max(n_recovered),
     by = brood_year[which(n_recovered == max(n_recovered))]
   )
 mod_dat_minter %>%
-  group_by(hatchery_location_name_fac) %>%
+  #group_by(hatchery_location_name_fac) %>%
   summarise(
     max = max(n_recovered),
     by = brood_year[which(n_recovered == max(n_recovered))]
@@ -626,7 +666,7 @@ new_dat_soos <- expand_grid(
   period = c("Before", "After"),
   fishery_region = c("BC", "Oregon", "Washington"),
   brood_year = NA,
-  log_rel_total = 0
+  log_releases = 0
 ) %>%
   mutate(
     period_f = relevel(
@@ -640,9 +680,15 @@ new_dat_soos <- expand_grid(
   )
 
 #get predictions
-pred_soos <- predict(fit2, newdata = new_dat_soos, type = "response")
+pred_soos <- predict(
+  fit2,
+  newdata = new_dat_soos,
+  type = "response",
+  se.fit = TRUE
+)
 # add it to data frame
-soos_tab <- new_dat_soos %>% add_column(predicted_rate = pred_soos)
+soos_tab <- new_dat_soos %>%
+  add_column(predicted_rate = pred_soos$fit, se = pred_soos$se.fit)
 
 
 new_dat_naselle <- expand_grid(
@@ -650,7 +696,7 @@ new_dat_naselle <- expand_grid(
   period = c("Before", "After"),
   fishery_region = c("BC", "Alaska", "Washington"),
   brood_year = NA,
-  log_rel_total = 0
+  log_releases = 0
 ) %>%
   mutate(
     period_f = relevel(
@@ -664,16 +710,22 @@ new_dat_naselle <- expand_grid(
   )
 
 #get predictions
-pred_naselle <- predict(fit4, newdata = new_dat_naselle, type = "response")
+pred_naselle <- predict(
+  fit4,
+  newdata = new_dat_naselle,
+  type = "response",
+  se.fit = TRUE
+)
 # add it to data frame
-naselle_tab <- new_dat_naselle %>% add_column(predicted_rate = pred_naselle)
+naselle_tab <- new_dat_naselle %>%
+  add_column(predicted_rate = pred_naselle$fit, se = pred_naselle$se.fit)
 
 new_dat_minter <- expand_grid(
   treatment_control = c("Control", "Treatment"),
   period = c("Before", "After"),
-  fishery_region = c("BC", "Alaska", "Washington"),
+  fishery_region = c("BC", "Oregon", "Washington"),
   brood_year = NA,
-  log_rel_total = 0
+  log_releases = 0
 ) %>%
   mutate(
     period_f = relevel(
@@ -687,21 +739,27 @@ new_dat_minter <- expand_grid(
   )
 
 #get predictions
-pred_minter <- predict(fit6, newdata = new_dat_minter, type = "response")
+pred_minter <- predict(
+  fit6,
+  newdata = new_dat_minter,
+  type = "response",
+  se.fit = TRUE
+)
 # add it to data frame
-minter_tab <- new_dat_minter %>% add_column(predicted_rate = pred_minter)
+minter_tab <- new_dat_minter %>%
+  add_column(predicted_rate = pred_minter$fit, se = pred_minter$se.fit)
 
 soos_tab <- soos_tab %>% add_column("Model" = "Soos creek")
 naselle_tab <- naselle_tab %>% add_column("Model" = "Naselle")
 minter_tab <- minter_tab %>% add_column("Model" = "Minter creek")
 
 tabs <- bind_rows(soos_tab, naselle_tab, minter_tab) %>%
-  select(-c(log_rel_total, period_f, fishery_region_f, brood_year)) %>%
+  select(-c(log_releases, period_f, fishery_region_f, brood_year)) %>%
   pivot_wider(
     id_cols = c(treatment_control, period, fishery_region),
     names_from = Model,
-    values_from = predicted_rate
+    values_from = c("predicted_rate", "se")
   )
 
 tabs
-#write_csv(tabs, "model_predicted_rate.csv")
+write_csv(tabs, "model_predicted_rate.csv")
