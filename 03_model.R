@@ -1,6 +1,6 @@
 #RMIS GLMM
 #Zoe Rand
-#last updated 2 September 2026
+#last updated 9 October 2026
 
 library(tidyverse)
 library(glmmTMB)
@@ -13,124 +13,143 @@ library(modelsummary) #for supplement tables
 
 # Data wrangling ---------------------------------------------------------
 
-#read in releases
-rel <- read.csv("data/releases_2010_2026.csv") |>
-  dplyr::select(-record_code) |>
-  dplyr::rename(tag_code = tag_code_or_release_id)
-rel$cwt_1st_mark_count[which(is.na(rel$cwt_1st_mark_count))] <- 0
-rel$cwt_2nd_mark_count[which(is.na(rel$cwt_2nd_mark_count))] <- 0
-rel$cwt_total <- rel$cwt_1st_mark_count + rel$cwt_2nd_mark_count
+# #read in releases
+# rel <- read.csv("data/releases_2010_2026.csv") |>
+#   dplyr::select(-record_code) |>
+#   dplyr::rename(tag_code = tag_code_or_release_id)
+# rel$cwt_1st_mark_count[which(is.na(rel$cwt_1st_mark_count))] <- 0
+# rel$cwt_2nd_mark_count[which(is.na(rel$cwt_2nd_mark_count))] <- 0
+# rel$cwt_total <- rel$cwt_1st_mark_count + rel$cwt_2nd_mark_count
 
-rel$non_cwt_1st_mark_count[which(is.na(rel$non_cwt_1st_mark_count))] <- 0
-rel$non_cwt_2nd_mark_count[which(is.na(rel$non_cwt_2nd_mark_count))] <- 0
-rel$total_releases <- rel$cwt_total +
-  rel$non_cwt_1st_mark_count +
-  rel$non_cwt_2nd_mark_count
+# rel$non_cwt_1st_mark_count[which(is.na(rel$non_cwt_1st_mark_count))] <- 0
+# rel$non_cwt_2nd_mark_count[which(is.na(rel$non_cwt_2nd_mark_count))] <- 0
+# rel$total_releases <- rel$cwt_total +
+#   rel$non_cwt_1st_mark_count +
+#   rel$non_cwt_2nd_mark_count
 
-#read in total recoveries
+#read in recoveries
 rec <- read_csv("data/joined_data.csv")
 
-#read in model data
 
-dat <- readRDS("data/data_for_modeling.rds")
+# #read in model data
 
-head(dat[[1]])
+# dat <- readRDS("data/data_for_modeling.rds")
 
-#naming by treatment hatchery so it's easier to work with
-names(dat) <- c("Soos", "Quinault", "Samish", "Lewis", "Naselle", "Minter")
+# head(dat[[1]])
 
-head(dat$Soos)
+# #naming by treatment hatchery so it's easier to work with
+# names(dat) <- c("Soos", "Quinault", "Samish", "Lewis", "Naselle", "Minter")
 
-#note only focusing on Soos, Naselle, and Minter for now
+# head(dat$Soos)
+
 #adding "after" designations to control hatcheries
-dat$Soos$release_year <- as.numeric(substr(dat$Soos$first_release_date, 1, 4))
-dat$Naselle$release_year <- as.numeric(substr(
-  dat$Naselle$first_release_date,
-  1,
-  4
-))
-dat$Minter$release_year <- as.numeric(substr(
-  dat$Minter$first_release_date,
-  1,
-  4
-))
-dat$Soos$period[dat$Soos$release_year >= 2020] <- "After"
-dat$Naselle$period[dat$Naselle$release_year >= 2020] <- "After"
-dat$Minter$period[dat$Minter$release_year >= 2019] <- "After"
+rec2 <- rec %>%
+  mutate(
+    period = ifelse(
+      model_group %in% c("Soos", "Naselle") & release_year >= 2020,
+      "After",
+      period
+    )
+  ) %>%
+  mutate(
+    period = ifelse(
+      model_group == "Minter" & release_year >= 2020,
+      "After",
+      period
+    )
+  )
 
+
+# dat$Soos$release_year <- as.numeric(substr(dat$Soos$first_release_date, 1, 4))
+# dat$Naselle$release_year <- as.numeric(substr(
+#   dat$Naselle$first_release_date,
+#   1,
+#   4
+# ))
+# dat$Minter$release_year <- as.numeric(substr(
+#   dat$Minter$first_release_date,
+#   1,
+#   4
+# ))
+# dat$Soos$period[dat$Soos$release_year >= 2020] <- "After"
+# dat$Naselle$period[dat$Naselle$release_year >= 2020] <- "After"
+# dat$Minter$period[dat$Minter$release_year >= 2019] <- "After"
 
 #the recoveries are by fish so need to summarise for the model
-mod_dat_soos <- dat$Soos %>%
+#switching to using raw recoveries rather than the estimated ones
+mod_dat_soos <- rec2 %>%
+  filter(model_group == "Soos") %>%
   group_by(
     brood_year,
-    hatchery_location_name,
     fishery_region,
     treatment_control,
     period
   ) %>%
-  summarise(n_recovered = floor(sum(number_cwt_estimated))) %>%
+  summarise(n_recovered = n()) %>%
+  add_column(model_group = "Soos") %>%
   ungroup()
 
-mod_dat_naselle <- dat$Naselle %>%
+mod_dat_naselle <- rec2 %>%
+  filter(model_group == "Naselle") %>%
   group_by(
     brood_year,
-    hatchery_location_name,
     fishery_region,
     treatment_control,
     period
   ) %>%
-  summarise(n_recovered = floor(sum(number_cwt_estimated))) %>%
+  summarise(n_recovered = n()) %>%
+  add_column(model_group = "Naselle") %>%
   ungroup()
 
-mod_dat_minter <- dat$Minter %>%
+mod_dat_minter <- rec2 %>%
+  filter(model_group == "Minter") %>%
   group_by(
     brood_year,
-    hatchery_location_name,
     fishery_region,
     treatment_control,
     period
   ) %>%
-  summarise(n_recovered = floor(sum(number_cwt_estimated))) %>%
+  summarise(n_recovered = n()) %>%
+  add_column(model_group = "Minter") %>%
   ungroup()
 
-#using release data to get total releases
-rel_by_hatch <- rel %>%
-  group_by(brood_year, hatchery_location_name) %>%
-  summarise(release_total = sum(total_releases)) %>%
-  mutate(log_rel_total = log(release_total))
+#get total releases
+releases <- rec2 %>%
+  group_by(model_group, treatment_control, release_year, brood_year) %>%
+  summarise(release_total = sum(unique(cwt_total))) %>%
+  mutate(log_releases = log(release_total))
+# rel_by_hatch <- rel %>%
+#   group_by(brood_year, hatchery_location_name) %>%
+#   summarise(release_total = sum(total_releases)) %>%
+#   mutate(log_rel_total = log(release_total))
 
 mod_dat_soos <- mod_dat_soos %>%
-  left_join(rel_by_hatch, by = c("brood_year", "hatchery_location_name"))
+  left_join(releases, by = c("model_group", "treatment_control", "brood_year"))
 
 mod_dat_naselle <- mod_dat_naselle %>%
-  left_join(rel_by_hatch, by = c("brood_year", "hatchery_location_name"))
+  left_join(releases, by = c("model_group", "treatment_control", "brood_year"))
 
 mod_dat_minter <- mod_dat_minter %>%
-  left_join(rel_by_hatch, by = c("brood_year", "hatchery_location_name"))
+  left_join(releases, by = c("model_group", "treatment_control", "brood_year"))
 
-#removing hatcheries that aren't treatments or controls
-mod_dat_soos <- mod_dat_soos %>%
-  filter(hatchery_location_name != "CLARKS CRK HATCHERY")
-mod_dat_naselle <- mod_dat_naselle %>%
-  filter(hatchery_location_name != "FORKS CREEK HATCHERY")
+# #removing hatcheries that aren't treatments or controls
+# mod_dat_soos <- mod_dat_soos %>%
+#   filter(hatchery_location_name != "CLARKS CRK HATCHERY")
+# mod_dat_naselle <- mod_dat_naselle %>%
+#   filter(hatchery_location_name != "FORKS CREEK HATCHERY")
 
 #removing regions that don't have enough data
-#Soos removing Alaska because only one control recovery in the after
+#Soos removing Alaska because only no control recovery in the after
 mod_dat_soos <- mod_dat_soos %>% filter(fishery_region != "Alaska")
 
-#Naselle removing Oregon because there's no control-after for that region
+#Naselle removing Oregon because there's no control-before for that region
 mod_dat_naselle <- mod_dat_naselle %>% filter(fishery_region != "Oregon")
-
-#Minter
-#removing California because there's only one data point
-mod_dat_minter <- mod_dat_minter %>% filter(fishery_region != "California")
-#removing oregon because there's no before data in the treatment hatchery
-mod_dat_minter <- mod_dat_minter %>% filter(fishery_region != "Oregon")
 
 
 # Plotting model data ----------------------------------------------------
-#hatchery colors
-hatch_col <- c('#1b9e77', '#d95f02', '#7570b3', '#e7298a', '#66a61e', '#e6ab02')
+# colors
+#hatch_col <- c('#1b9e77', '#d95f02', '#7570b3', '#e7298a', '#66a61e', '#e6ab02')
+tc_col <- c("#1b9e77", "#7570b3")
 
 #plotting function
 plot_mod_dat <- function(dat, cutoff_yr, plot_title) {
@@ -140,23 +159,23 @@ plot_mod_dat <- function(dat, cutoff_yr, plot_title) {
     geom_line(aes(
       x = brood_year,
       y = n_recovered,
-      group = hatchery_location_name_fac,
-      color = hatchery_location_name_fac
+      group = treatment_control,
+      color = treatment_control
     )) +
     geom_point(
-      aes(x = brood_year, y = n_recovered, color = hatchery_location_name_fac)
+      aes(x = brood_year, y = n_recovered, color = treatment_control)
       #shape = 21,
       #color = "transparent"
     ) +
     geom_vline(aes(xintercept = cutoff_yr), linetype = "dashed") +
-    facet_grid(treatment_control ~ fishery_region) +
+    facet_grid(~fishery_region) +
     labs(
       x = "Brood year",
       y = "CWT Recoveries",
-      color = "Hatchery"
+      color = NULL
     ) +
     scale_x_continuous(breaks = seq(2010, max_year, by = 4)) +
-    scale_color_manual(values = hatch_col) +
+    scale_color_manual(values = tc_col) +
     theme_minimal() +
     theme(axis.text.x = element_text(angle = 90)) +
     ggtitle(plot_title)
@@ -165,7 +184,6 @@ plot_mod_dat <- function(dat, cutoff_yr, plot_title) {
     select(
       brood_year,
       release_total,
-      hatchery_location_name_fac,
       treatment_control
     ) %>%
     distinct()
@@ -173,21 +191,21 @@ plot_mod_dat <- function(dat, cutoff_yr, plot_title) {
     geom_line(aes(
       x = brood_year,
       y = release_total,
-      group = hatchery_location_name_fac,
-      color = hatchery_location_name_fac
+      group = treatment_control,
+      color = treatment_control
     )) +
     geom_point(
-      aes(x = brood_year, y = release_total, color = hatchery_location_name_fac)
+      aes(x = brood_year, y = release_total, color = treatment_control)
     ) +
     geom_vline(aes(xintercept = cutoff_yr), linetype = "dashed") +
-    facet_wrap(~treatment_control) +
+    #facet_wrap(~treatment_control) +
     labs(
       x = "Brood year",
       y = "CWT Releases",
-      color = "Hatchery"
+      color = NULL
     ) +
     scale_x_continuous(breaks = seq(2010, max_year, by = 4)) +
-    scale_color_manual(values = hatch_col) +
+    scale_color_manual(values = tc_col) +
     theme_minimal() +
     theme(axis.text.x = element_text(angle = 90))
 
@@ -201,45 +219,45 @@ plot_mod_dat <- function(dat, cutoff_yr, plot_title) {
 
 #plots
 #making nice names for the hatcheries on the plot
-mod_dat_soos$hatchery_location_name_fac <- factor(
-  mod_dat_soos$hatchery_location_name,
-  levels = c(
-    "SOOS CREEK HATCHERY",
-    "CLARKS CRK HATCHERY",
-    "GORST CR REARING PND",
-    "GROVERS CR HATCHERY",
-    "ISSAQUAH HATCHERY",
-    "VOIGHTS CR HATCHERY"
-  ),
-  labels = c(
-    "Soos Creek",
-    "Clarks Creek",
-    "Gorst Creek",
-    "Grovers Creek",
-    "Issaquah",
-    "Voights Creek"
-  )
-)
+# mod_dat_soos$hatchery_location_name_fac <- factor(
+#   mod_dat_soos$hatchery_location_name,
+#   levels = c(
+#     "SOOS CREEK HATCHERY",
+#     "CLARKS CRK HATCHERY",
+#     "GORST CR REARING PND",
+#     "GROVERS CR HATCHERY",
+#     "ISSAQUAH HATCHERY",
+#     "VOIGHTS CR HATCHERY"
+#   ),
+#   labels = c(
+#     "Soos Creek",
+#     "Clarks Creek",
+#     "Gorst Creek",
+#     "Grovers Creek",
+#     "Issaquah",
+#     "Voights Creek"
+#   )
+# )
 
-mod_dat_naselle$hatchery_location_name_fac <- factor(
-  mod_dat_naselle$hatchery_location_name,
-  levels = c("NASELLE HATCHERY", "FORKS CREEK HATCHERY", "NEMAH HATCHERY"),
-  labels = c("Naselle", "Forks Creek", "Nemah")
-)
+# mod_dat_naselle$hatchery_location_name_fac <- factor(
+#   mod_dat_naselle$hatchery_location_name,
+#   levels = c("NASELLE HATCHERY", "FORKS CREEK HATCHERY", "NEMAH HATCHERY"),
+#   labels = c("Naselle", "Forks Creek", "Nemah")
+# )
 
-mod_dat_minter$hatchery_location_name_fac <- factor(
-  mod_dat_minter$hatchery_location_name,
-  levels = c(
-    "MINTER CR HATCHERY",
-    "CLEAR CREEK HATCHERY",
-    "KALAMA CR HATCHERY",
-    "TUMWATER FALLS HATCHERY"
-  ),
-  labels = c("Minter Creek", "Clear Creek", "Kalama Creek", "Tumwater Falls")
-)
+# mod_dat_minter$hatchery_location_name_fac <- factor(
+#   mod_dat_minter$hatchery_location_name,
+#   levels = c(
+#     "MINTER CR HATCHERY",
+#     "CLEAR CREEK HATCHERY",
+#     "KALAMA CR HATCHERY",
+#     "TUMWATER FALLS HATCHERY"
+#   ),
+#   labels = c("Minter Creek", "Clear Creek", "Kalama Creek", "Tumwater Falls")
+# )
 
-soos_recs <- plot_mod_dat(mod_dat_soos, 2020, "Soos creek")
-naselle_recs <- plot_mod_dat(mod_dat_naselle, 2020, "Naselle")
+soos_recs <- plot_mod_dat(mod_dat_soos, 2019, "Soos creek")
+naselle_recs <- plot_mod_dat(mod_dat_naselle, 2019, "Naselle")
 minter_recs <- plot_mod_dat(mod_dat_minter, 2019, "Minter creek")
 
 # ggsave(
@@ -286,7 +304,7 @@ fit2 <- glmmTMB(
     period_f *
     fishery_region_f +
     (1 | brood_year) +
-    offset(log_rel_total),
+    offset(log_releases),
   family = nbinom2,
   data = mod_dat_soos
 )
