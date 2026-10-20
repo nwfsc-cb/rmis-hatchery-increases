@@ -210,6 +210,20 @@ joined$fishery_region[which(
   substr(joined$recovery_location_code, 1, 2) == "6M"
 )] <- "California"
 
+
+recoveries <- dplyr::left_join(recoveries, locs)
+
+dplyr::filter(recoveries, recovery_rmis_region %in% c("CAGN", "GRAY", "NOOR", "NWC", "QCI", "SEAK", "SOOR", "WCVI")) |>
+  dplyr::group_by(recovery_rmis_region, run_year) |>
+  dplyr::summarize(n = n()) |>
+  ggplot(aes(run_year, n)) +
+  geom_line() +
+  facet_wrap(~recovery_rmis_region, scale = "free_y", ncol = 2) +
+  ylab("Recoveries") +
+  xlab("Run year") +
+  theme_bw()
+ggsave("figures/S4_recoveries_by_rmis_region_year.png", height = 5, width = 5)
+
 # rel |>
 #   dplyr::filter(hatchery_location_name == "CLARKS CRK HATCHERY") |>
 #   dplyr::group_by(brood_year) |>
@@ -217,7 +231,7 @@ joined$fishery_region[which(
 
 write.csv(joined, "data/joined_data.csv")
 
-#save average releases for predictions
+# save average releases for predictions
 write.csv(avg_releases, "data/avg_releases.csv")
 
 ##################################################################
