@@ -1,6 +1,6 @@
 #RMIS GLMM
 #Zoe Rand
-#last updated 15 October 2026
+#last updated 2 November 2026
 
 library(tidyverse)
 library(glmmTMB)
@@ -9,23 +9,10 @@ library(emmeans)
 library(patchwork)
 library(broom.mixed)
 library(modelsummary) #for supplement tables
+library(MASS) #for multivariate normal distribution
 
 
 # Data wrangling ---------------------------------------------------------
-
-# #read in releases
-# rel <- read.csv("data/releases_2010_2026.csv") |>
-#   dplyr::select(-record_code) |>
-#   dplyr::rename(tag_code = tag_code_or_release_id)
-# rel$cwt_1st_mark_count[which(is.na(rel$cwt_1st_mark_count))] <- 0
-# rel$cwt_2nd_mark_count[which(is.na(rel$cwt_2nd_mark_count))] <- 0
-# rel$cwt_total <- rel$cwt_1st_mark_count + rel$cwt_2nd_mark_count
-
-# rel$non_cwt_1st_mark_count[which(is.na(rel$non_cwt_1st_mark_count))] <- 0
-# rel$non_cwt_2nd_mark_count[which(is.na(rel$non_cwt_2nd_mark_count))] <- 0
-# rel$total_releases <- rel$cwt_total +
-#   rel$non_cwt_1st_mark_count +
-#   rel$non_cwt_2nd_mark_count
 
 #read in data
 rec <- read_csv("data/joined_data.csv")
@@ -33,54 +20,13 @@ rec <- read_csv("data/joined_data.csv")
 #read in average total releases for predictions
 avg_releases <- read_csv("data/avg_releases.csv")
 
-# #read in model data
-
-# dat <- readRDS("data/data_for_modeling.rds")
-
-# head(dat[[1]])
-
-# #naming by treatment hatchery so it's easier to work with
-# names(dat) <- c("Soos", "Quinault", "Samish", "Lewis", "Naselle", "Minter")
-
-# head(dat$Soos)
-
-# #adding "after" designations to control hatcheries
-# rec2 <- rec %>%
-#   mutate(
-#     period = ifelse(
-#       model_group %in% c("Soos", "Naselle") & release_year >= 2020,
-#       "After",
-#       period
-#     )
-#   ) %>%
-#   mutate(
-#     period = ifelse(
-#       model_group == "Minter" & release_year >= 2020,
-#       "After",
-#       period
-#     )
-#   )
-
-# dat$Soos$release_year <- as.numeric(substr(dat$Soos$first_release_date, 1, 4))
-# dat$Naselle$release_year <- as.numeric(substr(
-#   dat$Naselle$first_release_date,
-#   1,
-#   4
-# ))
-# dat$Minter$release_year <- as.numeric(substr(
-#   dat$Minter$first_release_date,
-#   1,
-#   4
-# ))
-# dat$Soos$period[dat$Soos$release_year >= 2020] <- "After"
-# dat$Naselle$period[dat$Naselle$release_year >= 2020] <- "After"
-# dat$Minter$period[dat$Minter$release_year >= 2019] <- "After"
 
 #the recoveries are by fish so need to summarise for the model
 #switching to using raw recoveries rather than the estimated ones
 mod_dat_soos <- rec %>%
   filter(region == "Central Sound") %>%
   filter(brood_year <= 2022) %>%
+  filter(brood_year >= 2011) %>%
   group_by(
     brood_year,
     fishery_region,
@@ -95,6 +41,7 @@ mod_dat_soos <- rec %>%
 mod_dat_naselle <- rec %>%
   filter(region == "Willapa") %>%
   filter(brood_year <= 2022) %>%
+  filter(brood_year >= 2011) %>%
   group_by(
     brood_year,
     fishery_region,
@@ -109,6 +56,7 @@ mod_dat_naselle <- rec %>%
 mod_dat_minter <- rec %>%
   filter(region == "South Sound") %>%
   filter(brood_year <= 2022) %>%
+  filter(brood_year >= 2011) %>%
   group_by(
     brood_year,
     fishery_region,
@@ -120,16 +68,14 @@ mod_dat_minter <- rec %>%
   add_column(region = "South Sound") %>%
   ungroup()
 
-#get total releases
+#get total cwt releases
 releases <- rec %>%
   group_by(region, treatment_control, brood_year) %>%
   summarise(release_total = sum(unique(cwt_total))) %>%
   mutate(log_releases = log(release_total))
 
-# rel_by_hatch <- rel %>%
-#   group_by(brood_year, hatchery_location_name) %>%
-#   summarise(release_total = sum(total_releases)) %>%
-#   mutate(log_rel_total = log(release_total))
+
+# add to recovery data
 
 mod_dat_soos <- mod_dat_soos %>%
   left_join(releases, by = c("region", "treatment_control", "brood_year"))
@@ -140,11 +86,19 @@ mod_dat_naselle <- mod_dat_naselle %>%
 mod_dat_minter <- mod_dat_minter %>%
   left_join(releases, by = c("region", "treatment_control", "brood_year"))
 
-# #removing hatcheries that aren't treatments or controls
-# mod_dat_soos <- mod_dat_soos %>%
-#   filter(hatchery_location_name != "CLARKS CRK HATCHERY")
-# mod_dat_naselle <- mod_dat_naselle %>%
-#   filter(hatchery_location_name != "FORKS CREEK HATCHERY")
+
+#checking that each combination has data
+mod_dat_soos %>%
+  group_by(fishery_region, treatment_control, period) %>%
+  summarise(n = n())
+
+mod_dat_naselle %>%
+  group_by(fishery_region, treatment_control, period) %>%
+  summarise(n = n())
+
+mod_dat_minter %>%
+  group_by(fishery_region, treatment_control, period) %>%
+  summarise(n = n())
 
 #removing regions that don't have enough data
 #Soos removing Alaska because only no control recovery in the after
@@ -192,7 +146,7 @@ plot_mod_dat <- function(dat, cutoff_yr, plot_title) {
     ggtitle(plot_title)
 
   release_dat <- dat %>%
-    select(
+    dplyr::select(
       brood_year,
       release_total,
       treatment_control
@@ -228,44 +182,6 @@ plot_mod_dat <- function(dat, cutoff_yr, plot_title) {
   return(plt_tog)
 }
 
-#plots
-#making nice names for the hatcheries on the plot
-# mod_dat_soos$hatchery_location_name_fac <- factor(
-#   mod_dat_soos$hatchery_location_name,
-#   levels = c(
-#     "SOOS CREEK HATCHERY",
-#     "CLARKS CRK HATCHERY",
-#     "GORST CR REARING PND",
-#     "GROVERS CR HATCHERY",
-#     "ISSAQUAH HATCHERY",
-#     "VOIGHTS CR HATCHERY"
-#   ),
-#   labels = c(
-#     "Soos Creek",
-#     "Clarks Creek",
-#     "Gorst Creek",
-#     "Grovers Creek",
-#     "Issaquah",
-#     "Voights Creek"
-#   )
-# )
-
-# mod_dat_naselle$hatchery_location_name_fac <- factor(
-#   mod_dat_naselle$hatchery_location_name,
-#   levels = c("NASELLE HATCHERY", "FORKS CREEK HATCHERY", "NEMAH HATCHERY"),
-#   labels = c("Naselle", "Forks Creek", "Nemah")
-# )
-
-# mod_dat_minter$hatchery_location_name_fac <- factor(
-#   mod_dat_minter$hatchery_location_name,
-#   levels = c(
-#     "MINTER CR HATCHERY",
-#     "CLEAR CREEK HATCHERY",
-#     "KALAMA CR HATCHERY",
-#     "TUMWATER FALLS HATCHERY"
-#   ),
-#   labels = c("Minter Creek", "Clear Creek", "Kalama Creek", "Tumwater Falls")
-# )
 
 soos_recs <- plot_mod_dat(mod_dat_soos, 2019, "Soos creek")
 naselle_recs <- plot_mod_dat(mod_dat_naselle, 2019, "Naselle")
@@ -328,7 +244,7 @@ fit2_simres <- simulateResiduals(fit2)
 
 
 plot(fit2_simres)
-#some (potentially minor) issues with the residuals currently
+
 
 plotResiduals(fit2_simres, form = model.frame(fit2)$treatment_control)
 plotResiduals(fit2_simres, form = model.frame(fit2)$fishery_region_f)
@@ -346,24 +262,6 @@ plot_mod_results <- function(fit, dat) {
   )
   print(plot(EMM_2))
 
-  #getting average offset for each group
-  # release_dat <- dat %>%
-  #   select(
-  #     brood_year,
-  #     release_total,
-  #     treatment_control,
-  #     period
-  #   ) %>%
-  #   distinct()
-
-  # release_avg <- release_dat %>%
-  #   group_by(treatment_control, period) %>%
-  #   summarise(mean_rel = mean(release_total))
-
-  # avg_offset_rel <- dat %>%
-  #   group_by(treatment_control, period_f, fishery_region_f) %>%
-  #   summarise(n = n()) %>%
-  #   left_join(release_avg, by = c("treatment_control", "period_f" = "period"))
   offsets <- expand_grid(
     treatment_control = unique(dat$treatment_control),
     period_f = unique(dat$period_f),
@@ -383,12 +281,6 @@ plot_mod_results <- function(fit, dat) {
     right_join(offsets, by = c('treatment_control', "period_f")) %>%
     arrange(fishery_region_f, period_f, treatment_control)
 
-  # avg_offset_rel$period_f <- relevel(
-  #   factor(avg_offset_rel$period_f),
-  #   ref = "Before"
-  # )
-
-  #avg_offset_rel <- avg_offset_rel %>% arrange(fishery_region_f, period_f)
   print(avg_offset_rel)
 
   EMM_ip_2 <- emmip(
@@ -396,7 +288,8 @@ plot_mod_results <- function(fit, dat) {
     treatment_control ~ period_f | fishery_region_f,
     offset = log(avg_offset_rel$mean_releases),
     CIs = TRUE,
-    plotit = FALSE
+    plotit = FALSE,
+    type = "response"
   )
   print(EMM_ip_2)
   comparison_plot <- ggplot(EMM_ip_2) +
@@ -408,7 +301,7 @@ plot_mod_results <- function(fit, dat) {
     geom_line(aes(x = xvar, y = yvar, color = tvar, group = tvar)) +
     geom_point(aes(x = xvar, y = yvar, color = tvar)) +
     facet_wrap(~fishery_region_f) +
-    labs(y = "Predicted recoveries (log scale)") +
+    labs(y = "Predicted catches") +
     scale_color_manual(values = c("#1b9e77", "#7570b3")) +
     theme_bw() +
     theme(
@@ -499,7 +392,7 @@ fit6_simres <- simulateResiduals(fit6)
 
 
 plot(fit6_simres)
-#some (potentially minor) issues with the residuals currently
+
 
 testQuantiles(fit6_simres)
 
@@ -532,7 +425,252 @@ ggsave(
   units = "in"
 )
 
+# Quantitative comparison metrics ----------------------------------------
+#Baci metrics based on equations from Chevalier et al. 2019
+
+baci_calc <- function(m) {
+  c(
+    baci_contrast = (m[["IA"]] - m[["IB"]]) - (m[["CA"]] - m[["CB"]]),
+    ci_contribution = abs(m[["IA"]] - m[["IB"]]) - abs(m[["CA"]] - m[["CB"]]),
+    ci_divergence = abs(m[["IA"]] - m[["CA"]]) - abs(m[["IB"]] - m[["CB"]])
+  )
+}
+
+#calculate metrics on real scale accounting for random effect variance
+#caluclated as exp(X + sigma_RE/2) based on paper (explores changes in mean accounting for random effects on real scale)
+#use draws from multivariate normal to get uncertainty in these metrics
+baci_metrics <- function(fit, dat, model_name, nsim = 10000, seed = 123) {
+  emm <- emmeans(
+    fit,
+    ~ treatment_control * period_f * fishery_region_f,
+    offset = 0 #get the marginal means without the offset (offset incorporated later)
+  )
+  emm_df <- as_tibble(emm)
+  emm_df$key <- paste0(
+    #keys to match to the equations above
+    ifelse(emm_df$treatment_control == "Treatment", "I", "C"),
+    ifelse(emm_df$period_f == "After", "A", "B")
+  )
+
+  offsets <- expand_grid(
+    #get the average total realeases (including CWT and non CWT for each combo)
+    treatment_control = unique(dat$treatment_control),
+    period_f = unique(dat$period_f),
+    fishery_region_f = unique(dat$fishery_region_f)
+  ) %>%
+    arrange(fishery_region_f, period_f, treatment_control)
+
+  avg_offset_rel <- avg_releases %>%
+    mutate(
+      period_f = relevel(
+        factor(avg_releases$period),
+        ref = "Before"
+      )
+    ) %>%
+    ungroup() %>%
+    filter(Hatchery == dat$model_group[1]) %>%
+    right_join(offsets, by = c('treatment_control', "period_f")) %>%
+    arrange(fishery_region_f, period_f, treatment_control)
+  # print(avg_offset_rel)
+  # print(emm_df)
+
+  #brood year sigma
+  sigma2 <- as.numeric(VarCorr(fit)$cond$brood_year)
+
+  set.seed(seed)
+  #point estimates
+  est <- exp(emm_df$emmean + log(avg_offset_rel$mean_releases) + (sigma2 / 2))
+
+  #simulate from a multivariate normal to get uncertainty
+  draws <- mvrnorm(nsim, mu = emm_df$emmean, Sigma = vcov(emm))
+  #estimates for each draw
+  draws2 <- apply(draws, 1, function(x) {
+    exp(x + log(avg_offset_rel$mean_releases) + (sigma2 / 2))
+  })
+  # print(est)
+  # print(head(draws))
+  # print(str(draws2))
+  # print(head(draws2))
+
+  #calculate metrics for each region
+  regions <- unique(dat$fishery_region_f)
+  nregion <- length(regions)
+  out_df <- list()
+  for (i in 1:nregion) {
+    idx <- which(emm_df$fishery_region_f == regions[i])
+    keys <- emm_df$key[idx]
+    # print(keys)
+    #print(setNames(est[idx], keys))
+    #point estimates
+    pt <- baci_calc(setNames(est[idx], keys))
+    #print(pt)
+    #for the full simulated draws for uncertainty
+    sims <- (apply(draws2[idx, ], 2, function(x) baci_calc(setNames(x, keys))))
+    #print(head(sims))
+    #print(str(sims))
+    #results for each region
+    out_df[[i]] <- tibble(
+      fishery_region = regions[i],
+      metric = names(pt),
+      estimate = unname(pt),
+      lcl = apply(sims, 1, quantile, 0.025),
+      ucl = apply(sims, 1, quantile, 0.975)
+    )
+  }
+
+  out_all <- bind_rows(out_df) %>% add_column(model = model_name)
+  return(out_all)
+}
+
+Naselle_baci <- baci_metrics(fit4, mod_dat_naselle, "Naselle")
+Soos_baci <- baci_metrics(fit2, mod_dat_soos, "Soos")
+Minter_baci <- baci_metrics(fit6, mod_dat_minter, "Minter")
+
+#BACI result table
+BACI_all <- bind_rows(Soos_baci, Naselle_baci, Minter_baci) %>%
+  pivot_wider(names_from = metric, values_from = c(estimate, lcl, ucl))
+BACI_all
+# New result plot --------------------------------------------------------
+#slightly different plot from above
+plot_mod_results_new <- function(fit, dat) {
+  EMM_2 <- emmeans(
+    fit,
+    ~ treatment_control * period_f * fishery_region_f,
+    offset = log(1000),
+    type = "response"
+  )
+  print(plot(EMM_2))
+  offsets <- expand_grid(
+    treatment_control = unique(dat$treatment_control),
+    period_f = unique(dat$period_f),
+    fishery_region_f = unique(dat$fishery_region_f)
+  ) %>%
+    arrange(fishery_region_f, period_f, treatment_control)
+  #print(offsets)
+  avg_offset_rel <- avg_releases %>%
+    mutate(
+      period_f = relevel(
+        factor(avg_releases$period),
+        ref = "Before"
+      )
+    ) %>%
+    ungroup() %>%
+    filter(Hatchery == dat$model_group[1]) %>%
+    right_join(offsets, by = c('treatment_control', "period_f")) %>%
+    arrange(fishery_region_f, period_f, treatment_control)
+  print(avg_offset_rel)
+
+  EMM_ip_2 <- emmip(
+    fit,
+    treatment_control ~ period_f | fishery_region_f,
+    offset = log(avg_offset_rel$mean_releases),
+    CIs = TRUE,
+    plotit = FALSE,
+    type = "response"
+  )
+  print(EMM_ip_2)
+  comparison_plot <- ggplot(EMM_ip_2) +
+    geom_linerange(
+      aes(x = xvar, ymin = LCL, ymax = UCL, color = tvar),
+      linewidth = 2,
+      alpha = 0.5
+    ) +
+    geom_line(aes(x = xvar, y = yvar, color = tvar, group = tvar)) +
+    geom_point(aes(x = xvar, y = yvar, color = tvar)) +
+    facet_wrap(
+      ~ factor(
+        fishery_region_f,
+        levels = c("Washington", "BC", "Alaska", "Oregon")
+      ),
+      nrow = 3,
+      scales = "free"
+    ) +
+    labs(y = "Predicted catch") +
+    scale_color_manual(values = c("#1b9e77", "#7570b3")) +
+    theme_bw() +
+    theme(
+      axis.title.x = element_blank(),
+      legend.title = element_blank(),
+      strip.background = element_rect(fill = "white")
+    )
+  return(print(comparison_plot))
+}
+
+soos_plot_new <- plot_mod_results(fit2, mod_dat_soos) + ggtitle("a) Soos creek")
+naselle_plot_new <- plot_mod_results(fit4, mod_dat_naselle) +
+  ggtitle("b) Naselle")
+minter_plot_new <- plot_mod_results(fit6, mod_dat_minter) +
+  ggtitle("c) Minter creek")
+
+#plot BACI metrics
+plot_BACI_metric <- function(BACI_res) {
+  BACI_res$clr <- ifelse(0 > BACI_res$lcl & 0 < BACI_res$ucl, 0, 1)
+  p1 <- ggplot(BACI_res) +
+    geom_point(aes(x = metric, y = estimate, color = as.factor(clr))) +
+    geom_linerange(aes(
+      x = metric,
+      ymin = lcl,
+      ymax = ucl,
+      color = as.factor(clr)
+    )) +
+    facet_wrap(
+      ~ factor(
+        fishery_region,
+        levels = c("Washington", "BC", "Alaska", "Oregon")
+      ),
+      nrow = 3
+    ) +
+    labs(x = NULL, y = "Change in catch") +
+    geom_hline(aes(yintercept = 0), linetype = "dashed") +
+    scale_x_discrete(
+      labels = c("BACI contrast", "CI-contribution", "CI-divergence")
+    ) +
+    scale_color_manual(values = c("black", "blue")) +
+    theme_bw() +
+    theme(
+      axis.title.x = element_blank(),
+      legend.title = element_blank(),
+      strip.background = element_rect(fill = "white"),
+      legend.position = "none"
+    )
+
+  return(print(p1))
+}
+
+Naselle_baci_plot <- plot_BACI_metric(Naselle_baci) #+ ggtitle("Naselle")
+Soos_baci_plot <- plot_BACI_metric(Soos_baci) #+ ggtitle("Soos")
+Minter_baci_plot <- plot_BACI_metric(Minter_baci) #+ ggtitle("Minter")
+
+
+#plot together
+baci_tog <- Soos_baci_plot / Naselle_baci_plot / Minter_baci_plot
+
+#plot with model results
+
+des <- "
+AACCEE
+BBDDFF
+"
+result_plot <- soos_plot_new +
+  Soos_baci_plot +
+  naselle_plot_new +
+  Naselle_baci_plot +
+  minter_plot_new +
+  Minter_baci_plot +
+  plot_layout(design = des, guides = "collect", axes = "collect")
+result_plot
+
+ggsave(
+  "figures/result_plot.pdf",
+  result_plot,
+  width = 12,
+  height = 8,
+  units = "in",
+  dpi = 600
+)
+
 # Table for supplement ---------------------------------------------------
+
 options(modelsummary_get = "broom")
 mods <- list("Soos creek" = fit2, "Naselle" = fit4, "Minter creek" = fit6)
 modelsummary(
