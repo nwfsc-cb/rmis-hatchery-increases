@@ -604,7 +604,7 @@ minter_plot_new <- plot_mod_results(fit6, mod_dat_minter) +
 
 #plot BACI metrics
 plot_BACI_metric <- function(BACI_res) {
-  BACI_res$clr <- ifelse(0 > BACI_res$lcl & 0 < BACI_res$ucl, 0, 1)
+  BACI_res$clr <- ifelse(BACI_res$lcl <= 0 & BACI_res$ucl >= 0, 0, 1)
   p1 <- ggplot(BACI_res) +
     geom_point(aes(x = metric, y = estimate, color = as.factor(clr))) +
     geom_linerange(aes(
