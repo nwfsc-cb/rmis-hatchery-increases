@@ -4,13 +4,57 @@
 library(tidyverse)
 library(glmmTMB)
 library(emmeans)
-library(MASS)
+library(future.apply) # for parallelization
 library(patchwork)
+
+
+# Settings ---------------------------------------------------------------
+nsims <- 1000 #number of simulated datasets per scenario and release level
+release_options <- seq(1, 4, by = 0.1) #amount that releases increase in the after period from the before period
+
+base_releases <- list(
+  n_releases_before_treat = 300000,
+  n_releases_before_control = 300000,
+  n_releases_after_control = 300000
+)
+
+n_draws <- 10000 #draws from MVN for BACI metric uncertainty
+
+set.seed(123)
+seeds <- sample(5000, nsims, replace = FALSE)
+
 
 #simulation colors
 pal <- c("#065BA1", "#677798")
 
-#function to simulate data
+# Scenarios --------------------------------------------------------------
+scenarios <- tribble(
+  ~scenario             , ~title                                                      , ~args                                                                                 ,
+  # Recovery rate same before/after
+  "baseline"            , "a) Baseline"                                               , list(phi = 15)                                                                        ,
+  # Higher releases in the control:
+  "control_600k"        , "b) Higher releases in control"                             , list(phi = 15, n_releases_before_control = 600000, n_releases_after_control = 600000) ,
+  # Recovery rate same before/after, but lower than baseline
+  "small_rate_decrease" , "c) Small decrease in recovery rate"                        , list(baseline_recovery_rate = exp(-9.3), phi = 15)                                    ,
+  "large_rate_decrease" , "d) Large decrease in recovery rate"                        , list(baseline_recovery_rate = exp(-9.6), phi = 15)                                    ,
+  # Recovery rate declines in the after period
+  "small_after_decline" , "e) Small decline in recovery \n rate in the after period " , list(exp_B_after = exp(-1), phi = 15)                                                 ,
+  "large_after_decline" , "f) Large decline in recovery \n rate in the after period"  , list(exp_B_after = exp(-1.5), phi = 15)                                               ,
+  # Overdispersion
+  "mid_overdispersion"  , "g) Middle overdispersion"                                  , list(phi = 7)                                                                         ,
+  "high_overdispersion" , "h) High overdispersion"                                    , list(phi = 3)                                                                         ,
+  #More variability in control only
+  "control_highCV"      , "i) High CV in control releases"                            , list(phi = 15, CV_control = 0.3)                                                      ,
+  #more variability in both
+  "highCV_all"          , "j) High CV in both control \nand treatment releases"       , list(phi = 15, CV_control = 0.3, CV_treatment = 0.3)                                  ,
+  # Monitoring time in the after period (other scenarios use 10 years)
+  "after_5yr"           , "k) 5 years in the after period"                            , list(phi = 15, n_years_after = 5)                                                     ,
+  "after_2yr"           , "l) 2 years in the after period"                            , list(phi = 15, n_years_after = 2)
+)
+
+
+# Functions --------------------------------------------------------------
+#function to simulate dataset
 simulate_data <- function(
   n_releases_before_treat = 300000,
   n_releases_after_treat = 1000000,
@@ -35,11 +79,6 @@ simulate_data <- function(
     dplyr::mutate(
       period = ifelse(brood_year <= n_years_before, "Before", "After")
     )
-
-  # dat_releases_before_treat<-rnorm(n_years_before, mean = n_releases_before_treat, sd = n_releases_before_treat * CV_treatment)
-  # dat_releases_after_treat<-rnorm(n_years_after, mean = n_releases_after_treat, sd = n_releases_after_treat * CV_treatment)
-  # dat_releases_before_control<-rnorm(n_years_before, mean = n_releases_before_control, sd = n_releases_before_control * CV_control)
-  # dat_releases_after_control<-rnorm(n_years_after, mean = n_releases_after_control, sd = n_releases_after_control * CV_control)
 
   dat <- dat |>
     dplyr::mutate(
@@ -75,13 +114,8 @@ simulate_data <- function(
   # )
   # simulate recovered values
   dat$n_recovered <- rnbinom(nrow(dat), mu = dat$mu, size = phi)
-  offsets <- c(
-    n_releases_before_control,
-    n_releases_before_treat,
-    n_releases_after_control,
-    n_releases_after_treat
-  )
-  return(list(dat = dat, offsets = offsets))
+
+  return(list(dat = dat))
 }
 
 #function to calculate BACI metrics
@@ -96,36 +130,8 @@ baci_calc <- function(m) {
 }
 
 #function fit model to simulated data
-fit_sim_dat <- function(
-  n_releases_before_treat = 300000,
-  n_releases_after_treat = 1000000,
-  n_releases_before_control = 300000,
-  n_releases_after_control = 300000,
-  baseline_recovery_rate = exp(-8.87),
-  B_treatment_control = exp(0),
-  exp_B_after = exp(0),
-  phi = 4,
-  n_years_before = 20,
-  n_years_after = 10,
-  seed = 1234,
-  CV_control = 0.1, #interannual variability for control
-  CV_treatment = 0.1 #interannual variabliity for treatment
-) {
-  out <- simulate_data(
-    n_releases_before_treat,
-    n_releases_after_treat,
-    n_releases_before_control,
-    n_releases_after_control,
-    baseline_recovery_rate,
-    B_treatment_control,
-    exp_B_after,
-    phi,
-    n_years_before,
-    n_years_after,
-    seed,
-    CV_control,
-    CV_treatment
-  )
+fit_sim_dat <- function(..., n_draws = n_draws) {
+  out <- simulate_data(...)
 
   sim_dat <- out$dat
 
@@ -146,39 +152,28 @@ fit_sim_dat <- function(
     offset = 0,
     plotit = FALSE
   )
-  EMM_df <- as_tibble(EMM)
+  EMM_df <- as_tibble(EMM) %>%
+    left_join(
+      distinct(sim_dat, treatment_control, period_f, mean_rel),
+      by = c("treatment_control", "period_f")
+    )
   EMM_df$key <- paste0(
     #keys to match to the equations above
     ifelse(EMM_df$treatment_control == "Treatment", "I", "C"),
     ifelse(EMM_df$period_f == "After", "A", "B")
   )
 
-  EMM_df <- EMM_df %>%
-    mutate(
-      release_mean = case_when(
-        treatment_control == "Treatment" &
-          period_f == "Before" ~ n_releases_before_treat,
-        treatment_control == "Treatment" &
-          period_f == "After" ~ n_releases_after_treat,
-        treatment_control == "Control" &
-          period_f == "Before" ~ n_releases_before_control,
-        treatment_control == "Control" &
-          period_f == "After" ~ n_releases_after_control
-      ),
-      log_releases = log(release_mean)
-    )
-
   #brood year random effect
   sigma2 <- as.numeric(VarCorr(fit)$cond$brood_year)
   #point estimate
-  est <- exp(EMM_df$emmean + EMM_df$log_releases + (sigma2 / 2))
+  est <- exp(EMM_df$emmean + log(EMM_df$mean_rel) + (sigma2 / 2))
 
   #simulate from multivariate normal to get uncertainty
   nsim <- 10000
-  draws <- mvrnorm(nsim, mu = EMM_df$emmean, Sigma = vcov(EMM))
+  draws <- MASS::mvrnorm(nsim, mu = EMM_df$emmean, Sigma = vcov(EMM))
   #estimates for each draw
   draws2 <- apply(draws, 1, function(x) {
-    exp(x + EMM_df$log_releases + (sigma2 / 2))
+    exp(x + log(EMM_df$mean_rel) + (sigma2 / 2))
   })
 
   keys <- EMM_df$key
@@ -199,25 +194,36 @@ fit_sim_dat <- function(
     ) # 1 if the interval doesn't overlap 0
 
   #print(siginf)
-  return(list(fit = fit, res = res))
+  return(res)
 }
 
-#simulation settings
-nsims <- 100 #number of simulations to run
-release_options <- seq(1, 4, by = 0.1) #releases in the after-treatment are this * releases in the before
-seeds <- sample(5000, nsims, replace = FALSE)
+#function to run a simulation
+#returns NULL if the fit fails so that a single bad fit doesn't stop the whole run
+run_one <- function(args, release_mult, seed) {
+  # scenario args override the defaults for each release number
+  p <- modifyList(base_releases, args)
+  p$n_releases_after_treat <- release_mult * p$n_releases_after_control
+  p$seed <- seed
+  p$n_draws <- n_draws
+
+  #print(p)
+  tryCatch(
+    do.call(fit_sim_dat, p) |> dplyr::select(metric, pos, signif),
+    error = function(e) NULL
+  )
+}
 
 #plot result function
 plot_sim_results <- function(sim_res, title) {
   plot1 <- ggplot(sim_res) +
     geom_line(aes(
-      x = release_options,
+      x = release_mult,
       y = proportion,
       group = type,
       color = type
     )) +
     geom_point(
-      aes(x = release_options, y = proportion, color = type, shape = type),
+      aes(x = release_mult, y = proportion, color = type, shape = type),
       alpha = 0.5
     ) +
     facet_wrap(~metric_group_f, nrow = 1) +
@@ -230,7 +236,7 @@ plot_sim_results <- function(sim_res, title) {
       labels = c("Value is positive", "Confidence intervals \ndo not overlap 0")
     ) +
     labs(
-      x = "Treatment releases/control releases",
+      x = "Treatment: After releases/Before releases",
       y = "Proportion of simulations",
       color = NULL,
       shape = NULL
@@ -241,352 +247,71 @@ plot_sim_results <- function(sim_res, title) {
 }
 
 
-#Scenarios
-#1) Recovery rate is the same before and after
-list_of_fits <- list()
-sim_fits <- list()
-sim_signif_BACI <- matrix(
-  NA,
-  nrow = length(release_options),
-  ncol = length(seeds)
+# Run scenarios ----------------------------------------------------------
+scenario_grid <- expand_grid(
+  scenarios,
+  release_mult = release_options,
+  seed = seeds
 )
-sim_signif_contribution <- matrix(
-  NA,
-  nrow = length(release_options),
-  ncol = length(seeds)
-)
-sim_signif_divergence <- matrix(
-  NA,
-  nrow = length(release_options),
-  ncol = length(seeds)
-)
-pos_BACI <- matrix(NA, nrow = length(release_options), ncol = length(seeds))
-pos_contribution <- matrix(
-  NA,
-  nrow = length(release_options),
-  ncol = length(seeds)
-)
-pos_divergence <- matrix(
-  NA,
-  nrow = length(release_options),
-  ncol = length(seeds)
+plan(multisession)
+sim_results <- future_mapply(
+  run_one,
+  scenario_grid$args,
+  scenario_grid$release_mult,
+  scenario_grid$seed,
+  future.seed = NULL,
+  SIMPLIFY = TRUE
 )
 
-for (s in 1:length(seeds)) {
-  for (i in 1:length(release_options)) {
-    sim_fit <- fit_sim_dat(
-      n_releases_after_treat = release_options[i] * 300000,
-      seed = seeds[s],
-      phi = 15
-    )
-    sim_fits[[i]] <- sim_fit$fit
-    sim_signif_BACI[i, s] <- sim_fit$res$signif[
-      sim_fit$res$metric == "baci_contrast"
-    ]
-    sim_signif_contribution[i, s] <- sim_fit$res$signif[
-      sim_fit$res$metric == "ci_contribution"
-    ]
-    sim_signif_divergence[i, s] <- sim_fit$res$signif[
-      sim_fit$res$metric == "ci_divergence"
-    ]
-    pos_BACI[i, s] <- sim_fit$res$pos[sim_fit$res$metric == "baci_contrast"]
-    pos_contribution[i, s] <- sim_fit$res$pos[
-      sim_fit$res$metric == "ci_contribution"
-    ]
-    pos_divergence[i, s] <- sim_fit$res$pos[
-      sim_fit$res$metric == "ci_divergence"
-    ]
-  }
-  list_of_fits[[s]] <- sim_fits
-}
+#combine results
+sim_results_df <- t(sim_results) %>%
+  as_tibble() %>%
+  rowid_to_column(var = "Sim_ID") %>%
+  unnest_longer(2:4) %>%
+  dplyr::select(-"signif_id")
+res <- scenario_grid %>%
+  as_tibble() %>%
+  dplyr::select(-args) %>%
+  rowid_to_column(var = "Sim_ID") %>%
+  left_join(sim_results_df, by = "Sim_ID")
 
-sim_signif_BACI_cumulative <- rowSums(sim_signif_BACI) / nsims
-sim_signif_contribution_cumulative <- rowSums(sim_signif_contribution) / nsims
-sim_signif_divergence_cumulative <- rowSums(sim_signif_divergence) / nsims
-divergence_pos_cumulative <- rowSums(pos_divergence) / nsims
-BACI_pos_cumulative <- rowSums(pos_BACI) / nsims
-contribution_pos_cumulative <- rowSums(pos_contribution) / nsims
-sim_res_table <- tibble(
-  release_options = release_options,
-  signif_BACI_contrast = sim_signif_BACI_cumulative,
-  signif_CI_contribution = sim_signif_contribution_cumulative,
-  signif_CI_divergence = sim_signif_divergence_cumulative,
-  pos_BACI = BACI_pos_cumulative,
-  pos_contribution = contribution_pos_cumulative,
-  pos_divergence = divergence_pos_cumulative
-) %>%
-  pivot_longer(
-    c(-release_options),
-    names_to = "metric",
-    values_to = "proportion"
-  ) %>%
-  mutate(
-    metric_group = case_when(
-      metric %in% c("signif_BACI_contrast", "pos_BACI") ~ "BACI contrast",
-      metric %in%
-        c("signif_CI_contribution", "pos_contribution") ~ "CI-contribution",
-      metric %in% c("signif_CI_divergence", "pos_divergence") ~ "CI-divergence"
-    )
-  ) %>%
-  mutate(
-    type = ifelse(
-      metric %in%
-        c(
-          "signif_BACI_contrast",
-          "signif_CI_contribution",
-          "signif_CI_divergence"
-        ),
-      "signif",
-      "pos"
-    )
-  ) %>%
+#summarise results
+res_df <- res %>%
+  pivot_longer(c(signif, pos), names_to = "type", values_to = "value") %>%
+  group_by(scenario, release_mult, metric, type) %>%
+  summarise(proportion = sum(value) / nsims) %>%
   mutate(
     metric_group_f = factor(
-      metric_group,
-      levels = c("BACI contrast", "CI-contribution", "CI-divergence")
+      metric,
+      levels = c("baci_contrast", "ci_contribution", "ci_divergence"),
+      labels = c("BACI contrast", "CI-contribution", "CI-divergence")
     )
   )
 
 
-p1 <- plot_sim_results(sim_res_table, "Baseline")
-
-
-#2) there is a decline of exp(-1) in the recovery rate in the after period
-list_of_fits2 <- list()
-sim_fits2 <- list()
-sim_signif2 <- matrix(NA, nrow = length(release_options), ncol = length(seeds))
-
-for (s in 1:length(seeds)) {
-  for (i in 1:length(release_options)) {
-    sim_fit2 <- fit_sim_dat(
-      n_releases_after_treat = release_options[i] * 300000,
-      exp_B_after = exp(-1),
-      seed = seeds[s],
-      phi = 15
-    )
-    sim_fits2[[i]] <- sim_fit2$fit
-    sim_signif2[i, s] <- sim_fit2$sig
-  }
-  list_of_fits2[[s]] <- sim_fits2
+# Plot results -----------------------------------------------------------
+plts <- list()
+for (s in 1:nrow(scenarios)) {
+  plts[[s]] <- plot_sim_results(
+    res_df[res_df$scenario == scenarios$scenario[s], ],
+    scenarios$title[s]
+  )
 }
 
-sim_signif_cumulative2 <- rowSums(sim_signif2) / nsims
-
-p2 <- plot_sim_results(
-  sim_signif_cumulative2,
-  "Small decrease in recovery \n rate in the after period "
-)
-
-
-#3) decline in the recovery rate in the after is exp(-1.5)
-list_of_fits3 <- list()
-sim_fits3 <- list()
-sim_signif3 <- matrix(NA, nrow = length(release_options), ncol = length(seeds))
-
-for (s in 1:length(seeds)) {
-  for (i in 1:length(release_options)) {
-    sim_fit3 <- fit_sim_dat(
-      n_releases_after_treat = release_options[i] * 300000,
-      exp_B_after = exp(-1.5),
-      seed = seeds[s],
-      phi = 15
-    )
-    sim_fits3[[i]] <- sim_fit3$fit
-    sim_signif3[i, s] <- sim_fit3$sig
-  }
-  list_of_fits3[[s]] <- sim_fits3
-}
-
-sim_signif_cumulative3 <- rowSums(sim_signif3) / nsims
-
-p3 <- plot_sim_results(
-  sim_signif_cumulative3,
-  "Large decrease in recovery \n rate in the after period"
-)
-
-
-#4) increase in data overdispersion
-#mid-level overdispersion (phi = 7)
-list_of_fits4 <- list()
-sim_fits4 <- list()
-sim_signif4 <- matrix(NA, nrow = length(release_options), ncol = length(seeds))
-
-for (s in 1:length(seeds)) {
-  for (i in 1:length(release_options)) {
-    sim_fit4 <- fit_sim_dat(
-      n_releases_after_treat = release_options[i] * 300000,
-      exp_B_after = exp(0),
-      seed = seeds[s],
-      phi = 7
-    )
-    sim_fits4[[i]] <- sim_fit4$fit
-    sim_signif4[i, s] <- sim_fit4$sig
-  }
-  list_of_fits4[[s]] <- sim_fits4
-}
-
-sim_signif_cumulative4 <- rowSums(sim_signif4) / nsims
-
-p4 <- plot_sim_results(
-  sim_signif_cumulative4,
-  "Middle overdispersion"
-)
-
-#higher overdispersion (phi = 3)
-list_of_fits5 <- list()
-sim_fits5 <- list()
-sim_signif5 <- matrix(NA, nrow = length(release_options), ncol = length(seeds))
-
-for (s in 1:length(seeds)) {
-  for (i in 1:length(release_options)) {
-    sim_fit5 <- fit_sim_dat(
-      n_releases_after_treat = release_options[i] * 300000,
-      exp_B_after = exp(0),
-      seed = seeds[s],
-      phi = 3
-    )
-    sim_fits5[[i]] <- sim_fit5$fit
-    sim_signif5[i, s] <- sim_fit5$sig
-  }
-  list_of_fits5[[s]] <- sim_fits5
-}
-
-sim_signif_cumulative5 <- rowSums(sim_signif5) / nsims
-
-p5 <- plot_sim_results(
-  sim_signif_cumulative5,
-  "High overdispersion"
-)
-
-
-#5) change in monitoring time in the after period
-#5 years (the ones above are 10 years)
-list_of_fits6 <- list()
-sim_fits6 <- list()
-sim_signif6 <- matrix(NA, nrow = length(release_options), ncol = length(seeds))
-
-for (s in 1:length(seeds)) {
-  for (i in 1:length(release_options)) {
-    sim_fit6 <- fit_sim_dat(
-      n_releases_after_treat = release_options[i] * 300000,
-      exp_B_after = exp(0),
-      seed = seeds[s],
-      phi = 15,
-      n_years_after = 5
-    )
-    sim_fits6[[i]] <- sim_fit6$fit
-    sim_signif6[i, s] <- sim_fit6$sig
-  }
-  list_of_fits6[[s]] <- sim_fits6
-}
-
-sim_signif_cumulative6 <- rowSums(sim_signif6) / nsims
-
-p6 <- plot_sim_results(
-  sim_signif_cumulative6,
-  "5 years in the \nafter period"
-)
-
-
-#2 years (the ones above are 10 years)
-list_of_fits7 <- list()
-sim_fits7 <- list()
-sim_signif7 <- matrix(NA, nrow = length(release_options), ncol = length(seeds))
-
-for (s in 1:length(seeds)) {
-  for (i in 1:length(release_options)) {
-    sim_fit7 <- fit_sim_dat(
-      n_releases_after_treat = release_options[i] * 300000,
-      exp_B_after = exp(0),
-      seed = seeds[s],
-      phi = 15,
-      n_years_after = 2
-    )
-    sim_fits7[[i]] <- sim_fit7$fit
-    sim_signif7[i, s] <- sim_fit7$sig
-  }
-  list_of_fits7[[s]] <- sim_fits7
-}
-
-sim_signif_cumulative7 <- rowSums(sim_signif7) / nsims
-
-p7 <- plot_sim_results(
-  sim_signif_cumulative7,
-  "2 years in the \nafter period"
-)
-
-
-#6) Recovery rate is the same in before and after but lower than baseline
-#small decrease
-list_of_fits8 <- list()
-sim_fits8 <- list()
-sim_signif8 <- matrix(NA, nrow = length(release_options), ncol = length(seeds))
-
-for (s in 1:length(seeds)) {
-  for (i in 1:length(release_options)) {
-    sim_fit8 <- fit_sim_dat(
-      baseline_recovery_rate = exp(-9.3),
-      n_releases_after_treat = release_options[i] * 300000,
-      seed = seeds[s],
-      phi = 15
-    )
-    sim_fits8[[i]] <- sim_fit8$fit
-    sim_signif8[i, s] <- sim_fit8$sig
-  }
-  list_of_fits8[[s]] <- sim_fits8
-}
-
-sim_signif_cumulative8 <- rowSums(sim_signif8) / nsims
-
-p8 <- plot_sim_results(sim_signif_cumulative, "Small decrease in recovery rate")
-
-#large decrease
-list_of_fits9 <- list()
-sim_fits9 <- list()
-sim_signif9 <- matrix(NA, nrow = length(release_options), ncol = length(seeds))
-
-for (s in 1:length(seeds)) {
-  for (i in 1:length(release_options)) {
-    sim_fit9 <- fit_sim_dat(
-      baseline_recovery_rate = exp(-9.6),
-      n_releases_after_treat = release_options[i] * 300000,
-      seed = seeds[s],
-      phi = 15
-    )
-    sim_fits9[[i]] <- sim_fit9$fit
-    sim_signif9[i, s] <- sim_fit9$sig
-  }
-  list_of_fits9[[s]] <- sim_fits9
-}
-
-sim_signif_cumulative9 <- rowSums(sim_signif9) / nsims
-
-p9 <- plot_sim_results(sim_signif_cumulative, "Large decrease in recovery rate")
-
-
-#plot simulations together
-des <- "
-AA##
-BBCC
-DDEE
-FFGG
-HHII"
-pall <- p1 +
-  p8 +
-  p9 +
-  p2 +
-  p3 +
-  p4 +
-  p5 +
-  p6 +
-  p7 +
-  plot_layout(design = des, axes = "collect")
+p_all <- wrap_plots(plts) +
+  plot_layout(
+    nrow = nrow(scenarios) / 2,
+    axes = "collect",
+    guides = "collect"
+  ) &
+  theme(legend.position = "bottom")
+p_all
 
 ggsave(
-  "figures/simualtion_results.png",
-  pall,
-  width = 6,
-  height = 8,
+  "figures/simulation_results.pdf",
+  p_all,
+  width = 8,
+  height = 10,
   units = "in",
   dpi = 600
 )
