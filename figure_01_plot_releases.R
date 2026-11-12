@@ -282,7 +282,7 @@ ggsave("figures/Figure1_release_trends_control_treatment.png", width = 7, height
 #   facet_wrap(~pretty_name, scale = "free_y", ncol = 4) +
 #   theme_bw() +
 #   scale_y_continuous(labels = scales::label_number(scale = 1e-3, big.mark = "")) +
-#   ylab("Coded wire tag releases (thousands)") +
+#   ylab("Total releases (thousands)") +
 #   xlab("Brood year") +
 #   scale_x_continuous(breaks = c(2010, 2015, 2020)) +
 #   theme(
